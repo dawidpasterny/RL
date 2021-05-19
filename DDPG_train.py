@@ -14,7 +14,7 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
 from lib import model, common
-from Design.Environments import stage_creator as sc
+import stage_creator as sc
 
 GAMMA = 0.99
 BATCH_SIZE = 64

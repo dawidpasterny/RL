@@ -4,7 +4,7 @@ sys.path.append(os.getcwd())
 
 from lib import model
 import datetime
-from Design.Environments import stage_creator as sc
+import stage_creator as sc
 import numpy as np
 import torch
 import torch.nn as nn

@@ -16,7 +16,7 @@ import torch
 from gym import Env, spaces, ObservationWrapper, Wrapper
 from gym.utils import seeding
 
-from Design.Models.DDPG.lib import model
+from lib import model
 
 
 def get_admisible_ratios(d):
