@@ -25,7 +25,7 @@ TEST_INTERV = 1000
 UNROLL = 2
 
 
-def test(net, ae, env, count=10, device="cpu"):
+def test(net, ae, env, count=10, device="gpu"):
     """ Plays a number of episodes using actor net
         Returns average episode reward and step count
     """
@@ -50,9 +50,9 @@ def test(net, ae, env, count=10, device="cpu"):
 
 
 if __name__ == "__main__":
-    device = torch.device("cpu")
-    save_path = "./Design/Models/DDPG/"
-    writer = SummaryWriter(log_dir="./Design/Models/DDPG/runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
+    device = torch.device("gpu")
+    save_path = "./"
+    writer = SummaryWriter(log_dir="./runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
 
     # Envs
     env = sc.StageCreator(seed=3672871121734420758)
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     test_env = sc.ScreenOutput(64, test_env)
 
     # Networks
-    ae = model.Autoencoder(1, pretrained="./Design/Models/DDPG/Autoencoder-FC.dat").float().to(device).float()
+    ae = model.Autoencoder(1, pretrained="./Autoencoder-FC.dat").float().to(device).float()
     # fe = lambda x: ae.encode(x)
     obs_size += 64
     act_net = model.DDPGActor(obs_size, env.action_space.shape[0]).to(device).float()
