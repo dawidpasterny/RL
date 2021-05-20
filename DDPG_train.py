@@ -20,9 +20,9 @@ GAMMA = 0.99
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-4
 REPLAY_SIZE = 80000
-REPLAY_INITIAL = 8000
+REPLAY_INITIAL = 5000
 TEST_INTERV = 1000
-UNROLL = 1 # might not work for >1
+UNROLL = 2 # might not work for >1
 
 
 def test(net, ae, env, count=10, device="cpu"):
@@ -143,7 +143,7 @@ if __name__ == "__main__":
             tracker.track("Loss_actor", actor_loss, exp_count)
             
 
-            # Sync target networks
+            # Soft sync target networks
             tgt_act_net.alpha_sync(alpha=1 - 1e-3)
             tgt_crt_net.alpha_sync(alpha=1 - 1e-3)
 
@@ -159,14 +159,14 @@ if __name__ == "__main__":
                 writer.add_scalar("Test_mean_steps_10", mean_steps, exp_count)
 
                 if test_count>200:
-                    torch.save(act_net.state_dict(), save_path + "Actor-worst.dat")
-                    torch.save(crt_net.state_dict(), save_path + "Critic_worst.dat")
+                    torch.save(act_net.state_dict(), save_path + "Actor-worst"+datetime.datetime.now().strftime("%b%d_%H_%M_%S")+".dat")
+                    torch.save(crt_net.state_dict(), save_path + "Critic_worst"+datetime.datetime.now().strftime("%b%d_%H_%M_%S")+".dat")
 
                 if best_test_reward is None or best_test_reward < mean_reward:
                     if best_test_reward is not None:
                         print(f"Best reward updated -> {mean_reward:.3f}")
-                        torch.save(act_net.state_dict(), save_path + "Actor-best.dat")
-                        torch.save(crt_net.state_dict(), save_path + "Critic_best.dat")
+                        torch.save(act_net.state_dict(), save_path + "Actor-best"+datetime.datetime.now().strftime("%b%d_%H_%M_%S")+".dat")
+                        torch.save(crt_net.state_dict(), save_path + "Critic_best"+datetime.datetime.now().strftime("%b%d_%H_%M_%S")+".dat")
                         # torch.save(ae.state_dict(), save_path + "Autoencoder_best_2.dat")
                     best_test_reward = mean_reward
 

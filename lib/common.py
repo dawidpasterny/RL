@@ -78,38 +78,38 @@ class AgentDDPG():
             # Perform step
             (next_screen, next_state), reward, done, _ = self.env.step(action)
             total_reward += reward
-            # print("State 2: ",state)
-            # print("Screen 2: ",(screen==next_screen).all())
             # print("Next state: ", next_state)
 
             local_buffer.append([screen, state, action, reward, done, next_screen, next_state])
+            # self.exp_buffer.append(Experience(*local_buffer[-1]))
             # print("Exp: ", np.array(local_buffer[-1], dtype=object)[[1,2,3,4,6]])
-            self.exp_buffer.append(Experience(*local_buffer[-1]))
             state = next_state
             screen = next_screen
             steps+=1
             
-        # # Unroll from only the last state since other rewards are 0 either way
-        # # exp = [screen, state, action, reward, done, next_screen, next_state]
-        # if steps>self.unroll_steps:
-        #     for i in range(steps-self.unroll_steps):
-        #         # reward is 0 so I don't care about discounting
-        #         local_buffer[i][-3:] = local_buffer[i+self.unroll_steps-1][-3:]     
-        #         print("Exp: ", np.array(local_buffer[i], dtype=object)[[1,2,3,4,6]])
-        #         self.exp_buffer.append(Experience(*local_buffer[i]))
-        # for i in range(min(steps, self.unroll_steps)):
-        #     local_buffer[-1-i][-3:] = local_buffer[-1][-3:]
-        #     local_buffer[-1-i][3] = reward*self.gamma**(i)
-        #     print("Exp: ", np.array(local_buffer[i], dtype=object)[[1,2,3,4,6]])
-        #     self.exp_buffer.append(Experience(*local_buffer[i]))
+        # Unroll from only the last state since other rewards are 0 either way
+        # exp = [screen, state, action, reward, done, next_screen, next_state]
+        if steps>self.unroll_steps:
+            for i in range(steps-self.unroll_steps):
+                # reward is 0 so I don't care about discounting
+                local_buffer[i][-3:] = local_buffer[i+self.unroll_steps-1][-3:]     
+                # print("Exp: ", np.array(local_buffer[i], dtype=object)[[1,2,3,4,6]])
+                self.exp_buffer.append(Experience(*local_buffer[i]))
+        for i in range(min(steps, self.unroll_steps),0,-1): # Reward discouting here
+            local_buffer[-i][-3:] = local_buffer[-1][-3:]
+            local_buffer[-i][3] = reward*self.gamma**(i)
+            # print("Exp: ", np.array(local_buffer[-i], dtype=object)[[1,2,3,4,6]])
+            self.exp_buffer.append(Experience(*local_buffer[-i]))
 
 
         self.episode_rewards.append(total_reward)
         self.episode_steps.append(steps)
 
         # HER, substitute target with the second to last state
+        # Using unrolling and HER might actually be the only wayt to overcome the limbo of first 
+        # step where any action won't change the state because one gear doesn't make up a gear stage
         n = len(local_buffer)
-        if n>2:
+        if n>2: # >2 because the first action doesn't change the state
             # .pop(), do not to take the experience that terminated
             last_screen, last_state, _,_,_,_,_ = local_buffer.pop() # new terminals
             target = last_state[:3] # x_current, y_current, i_current
