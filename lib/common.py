@@ -1,14 +1,14 @@
 import sys
 import time
 import numpy as np
-np.set_printoptions(precision=4)
+np.set_printoptions(precision=4, threshold=sys.maxsize)
 
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
 from collections import namedtuple, deque, defaultdict
-
+# import matplotlib.pyplot as plt
 
 # if next_state=None means s was a terminal state
 Experience = namedtuple('Experience', ['screen', 'state', 'action', 'reward', 'done', 'next_screen', 'next_state'])
@@ -29,12 +29,13 @@ class AgentDDPG():
         # Orsetein-Uhlenbeck process parameters
         self.ou_mu = kwargs.get("ou_mu", 0.0)
         self.ou_teta = kwargs.get("ou_teta", 0.15)
-        self.ou_sigma = kwargs.get("ou_sigma", 0.1)
-        self.ou_epsilon = kwargs.get("ou_epsilon", 1.0)
+        self.ou_sigma = kwargs.get("ou_sigma", 0.15) # originally .2
+        self.ou_epsilon = kwargs.get("ou_epsilon", .6) # originally 1.0
         #Misc
-        self.clip = lambda x: [min(max(0,x[0]), .7), min(max(0,x[1]), 1)]
+        self.clip = lambda x: [min(max(0.05,x[0]), .7), min(max(0,x[1]), 1)]
         self.unroll_steps = kwargs.get("unroll_steps", 1)
         self.gamma = gamma # for unrolling
+        # self.fig, self.ax = plt.subplots(1,1)
 
 
     def play_episode(self):
@@ -53,6 +54,7 @@ class AgentDDPG():
         local_buffer=[]
 
         while not done:
+            # print("State: ",state)
             state_t = torch.tensor([state]).to(self.device).float()
             screen_t = torch.tensor([screen]).to(self.device)
             features = torch.reshape(self.ae.encode(screen_t), (1,-1)).float()
@@ -76,25 +78,30 @@ class AgentDDPG():
             # Perform step
             (next_screen, next_state), reward, done, _ = self.env.step(action)
             total_reward += reward
-
-            # if done:
-            #     print("Done")
+            # print("State 2: ",state)
+            # print("Screen 2: ",(screen==next_screen).all())
+            # print("Next state: ", next_state)
 
             local_buffer.append([screen, state, action, reward, done, next_screen, next_state])
+            # print("Exp: ", np.array(local_buffer[-1], dtype=object)[[1,2,3,4,6]])
+            self.exp_buffer.append(Experience(*local_buffer[-1]))
             state = next_state
             screen = next_screen
             steps+=1
             
-        # Unroll from only the last state since other rewards are 0 either way
-        # exp = [screen, state, action, reward, done, next_screen, next_state]
-        if steps>self.unroll_steps:
-            for i in range(steps-self.unroll_steps):
-                local_buffer[i][-3:] = local_buffer[i+self.unroll_steps-1][-3:]
-                self.exp_buffer.append(Experience(*local_buffer[i]))
-        for i in range(min(steps, self.unroll_steps)):
-            local_buffer[-1-i][-3:] = local_buffer[-1][-3:]
-            local_buffer[-1-i][3] = reward*self.gamma**(i)
-            self.exp_buffer.append(Experience(*local_buffer[i]))
+        # # Unroll from only the last state since other rewards are 0 either way
+        # # exp = [screen, state, action, reward, done, next_screen, next_state]
+        # if steps>self.unroll_steps:
+        #     for i in range(steps-self.unroll_steps):
+        #         # reward is 0 so I don't care about discounting
+        #         local_buffer[i][-3:] = local_buffer[i+self.unroll_steps-1][-3:]     
+        #         print("Exp: ", np.array(local_buffer[i], dtype=object)[[1,2,3,4,6]])
+        #         self.exp_buffer.append(Experience(*local_buffer[i]))
+        # for i in range(min(steps, self.unroll_steps)):
+        #     local_buffer[-1-i][-3:] = local_buffer[-1][-3:]
+        #     local_buffer[-1-i][3] = reward*self.gamma**(i)
+        #     print("Exp: ", np.array(local_buffer[i], dtype=object)[[1,2,3,4,6]])
+        #     self.exp_buffer.append(Experience(*local_buffer[i]))
 
 
         self.episode_rewards.append(total_reward)
@@ -102,10 +109,10 @@ class AgentDDPG():
 
         # HER, substitute target with the second to last state
         n = len(local_buffer)
-        if n!=1:
-            # .pop() not to take the experience that terminated
+        if n>2:
+            # .pop(), do not to take the experience that terminated
             last_screen, last_state, _,_,_,_,_ = local_buffer.pop() # new terminals
-            target = last_state[:3] # x_current, y_current, i_current]
+            target = last_state[:3] # x_current, y_current, i_current
             # First, fix the unrolling after deleting the last experience
             for i in range(min(self.unroll_steps, len(local_buffer))):
                 local_buffer[-1-i][-3:] = [True, last_screen, last_state]
@@ -115,8 +122,12 @@ class AgentDDPG():
             for i, exp in enumerate(local_buffer):
                 exp[1][-3:] = target # state target
                 exp[-1][-3:] = target # next state target
+                # print("HER experienece:", np.array(exp, dtype=object)[[1,2,3,4,6]])
                 self.exp_buffer.append(Experience(*exp))
                 steps +=1
+
+        # if done:
+        #     print("Done\n")
 
         return steps
 

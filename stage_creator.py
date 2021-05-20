@@ -114,26 +114,29 @@ class StageCreator(Env):
         """
         done = False
         reward=0
-        if a[0]<D_MIN:
-            # return self.s, -1, True, None
-            return self.s, reward, True, None
+        next_state = self.s.copy()
+        # if a[0]<D_MIN:
+        #     # return self.s, -1, True, None
+        #     return next_state.s, reward, True, None
         if self.traj==[]:
-            done = self.check_collisions(*self.s[:2], a[0])
+            done = self.check_collisions(*next_state[:2], a[0])
             self.traj.append((*self.p_start, a[0]))
             # reward = -int(done)
         else:
             d_old = self.traj[-1][-1]
-            self.s[:2] += pol2car((d_old+a[0])/2, 2*np.pi*a[1]) # new position
-            self.s[2] *= -d_old/a[0] # new ratio
-            done = self.check_collisions(*self.s[:2], a[0])
-            self.traj.append((*self.s[:2], a[0]))
+            # print("Pre update: ", self.s)
+            next_state[:2] += pol2car((d_old+a[0])/2, 2*np.pi*a[1]) # new position
+            next_state[2] *= -d_old/a[0] # new ratio
+            done = self.check_collisions(*next_state[:2], a[0])
+            self.traj.append((*next_state[:2], a[0]))
+            # print("Post update: ", self.s)
             # reward = -int(done)
         
-        p_dist = np.linalg.norm(self.s[:2]-self.s[-3:-1], 2)
+        p_dist = np.linalg.norm(next_state[:2]-next_state[-3:-1], 2)
         if p_dist<(a[0]+D_MIN)/2: # if the gear occludes the output
             done = True
             if p_dist<0.02:
-                i_ratio = self.s[-1]/self.s[2]
+                i_ratio = next_state[-1]/next_state[2]
                 if i_ratio < 0:
                     # reward = -1
                     reward = 0
@@ -147,7 +150,9 @@ class StageCreator(Env):
             # else:
             #     reward = max(0,1-abs(np.log(i_ratio)))
 
-        return self.s, reward, done, None
+        self.s = next_state
+        
+        return next_state, reward, done, None
 
 
     def render(self, mode="human", delay=0.1, path=None, ae=None):
@@ -190,7 +195,7 @@ class StageCreator(Env):
             v_x,v_y = list(zip(*self.b_points))
             self.ax[0].plot(list(v_x) +[v_x[0]], list(v_y) + [v_y[0]], c='k')
 
-        return self.s
+        return self.s.copy()
 
 
     def seed(self, seed=None):
@@ -262,7 +267,8 @@ class ScreenOutput(ObservationWrapper):
             if self.b_points is not None:
                 self._draw_boundary()
 
-        return np.array([self.screen], dtype=np.float32), obs
+        # print("Wrapper obs:", obs)
+        return np.array([self.screen.copy()], dtype=np.float32), obs
 
 
     # def reset(self):

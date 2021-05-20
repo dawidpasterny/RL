@@ -22,7 +22,7 @@ LEARNING_RATE = 1e-4
 REPLAY_SIZE = 80000
 REPLAY_INITIAL = 8000
 TEST_INTERV = 1000
-UNROLL = 2
+UNROLL = 1 # might not work for >1
 
 
 def test(net, ae, env, count=10, device="cpu"):
