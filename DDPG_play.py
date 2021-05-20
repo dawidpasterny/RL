@@ -17,11 +17,12 @@ if __name__ == "__main__":
     obs_size = env.observation_space.shape[0]
     res = 64
     env = sc.ScreenOutput(res, env)
+    device = torch.device("cpu")
 
-    ae = model.Autoencoder(1, pretrained="./Design/Models/DDPG/Autoencoder-FC.dat").float()
+    ae = model.Autoencoder(1, pretrained="./Autoencoder-FC.dat").float().to(device)
     obs_size += ae.get_bottleneck_size(res)[1]
     act_net = model.DDPGActor(obs_size, env.action_space.shape[0])
-    act_net.load_state_dict(torch.load("./Design/Models/DDPG/Actor-best.dat"))
+    act_net.load_state_dict(torch.load("./Actor-best.dat"))
     
     screen, state = env.reset()
     env.render(ae=ae, delay=.5)

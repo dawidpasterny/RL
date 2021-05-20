@@ -4,10 +4,10 @@ sys.path.append(os.getcwd())
 
 import matplotlib
 # matplotlib.use('TkAgg')
-
-import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+
+import numpy as np
 from fractions import Fraction
 import itertools as it
 from scipy.spatial import Delaunay, ConvexHull
@@ -477,10 +477,11 @@ class ScreenOutput(ObservationWrapper):
 
 
 if __name__=="__main__":
+    device = torch.device("cpu")
     env = StageCreator(boundary=.8)
     env = ScreenOutput(128, env)
 
-    ae = model.Autoencoder(1, pretrained="./Design/Models/DDPG/Autoencoder-FC.dat").float()
+    ae = model.Autoencoder(1, pretrained="./Autoencoder_best_2.dat").to(device).float()
     # print(ae.get_fe_out_size((1,RES,RES)))
     # ae=None
     env.render(ae=ae)

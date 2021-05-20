@@ -20,12 +20,12 @@ GAMMA = 0.99
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-4
 REPLAY_SIZE = 80000
-REPLAY_INITIAL = 80
+REPLAY_INITIAL = 8000
 TEST_INTERV = 1000
 UNROLL = 2
 
 
-def test(net, ae, env, count=10, device="cuda"):
+def test(net, ae, env, count=10, device="cpu"):
     """ Plays a number of episodes using actor net
         Returns average episode reward and step count
     """
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     test_env = sc.ScreenOutput(64, test_env)
 
     # Networks
-    ae = model.Autoencoder(1, pretrained="./Autoencoder-FC.dat").float().to(device).float()
+    ae = model.Autoencoder(1, pretrained="./Autoencoder-FC.dat", device=device).to(device).float()
     # fe = lambda x: ae.encode(x)
     obs_size += 64
     act_net = model.DDPGActor(obs_size, env.action_space.shape[0]).to(device).float()
@@ -101,17 +101,17 @@ if __name__ == "__main__":
             state_features = ae.encode(screens)
             next_state_features = ae.encode(next_screens)
 
-             # Train auto encoder
-            if exp_count<500000:
-               ae_opt.zero_grad()
-               out = ae.decode(state_features)
-               ae_loss = nn.functional.mse_loss(out, screens)
-               ae_loss.backward()
-               ae_opt.step()
-               if ae_loss.item()<ae_loss_best:
-                    torch.save(ae.state_dict(), save_path + "Autoencoder_best_2.dat")
+            # # Train auto encoder
+            # if exp_count<50000:
+            #    ae_opt.zero_grad()
+            #    out = ae.decode(state_features)
+            #    ae_loss = nn.functional.mse_loss(out, screens)
+            #    ae_loss.backward()
+            #    ae_opt.step()
+            #    if ae_loss.item()<ae_loss_best:
+            #         torch.save(ae.state_dict(), save_path + "Autoencoder_best_2.dat")
 
-               tracker.track("Loss_AE", ae_loss, exp_count)
+            #    tracker.track("Loss_AE", ae_loss, exp_count)
 
             # Concatenate with states
             states = torch.column_stack((torch.reshape(state_features.detach(), (BATCH_SIZE,-1)),states))
@@ -157,6 +157,10 @@ if __name__ == "__main__":
 
                 writer.add_scalar("Test_mean_reward_10", mean_reward, exp_count)
                 writer.add_scalar("Test_mean_steps_10", mean_steps, exp_count)
+
+                if test_count>50:
+                    torch.save(act_net.state_dict(), save_path + "Actor-worst.dat")
+                    torch.save(crt_net.state_dict(), save_path + "Critic_worst.dat")
 
                 if best_test_reward is None or best_test_reward < mean_reward:
                     if best_test_reward is not None:

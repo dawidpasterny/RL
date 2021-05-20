@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 class Autoencoder(nn.Module):
-    def __init__(self, io_size, pretrained=None):
+    def __init__(self, io_size, pretrained=None, device="cpu"):
         super().__init__()
         self.encoder = nn.Sequential( # 1x128x128 -> 32x10x10
             # nn.MaxPool2d(2,2),
@@ -30,7 +30,7 @@ class Autoencoder(nn.Module):
         )
 
         if pretrained:
-            self.load_state_dict(torch.load(pretrained))
+            self.load_state_dict(torch.load(pretrained, map_location=torch.device(device)))
 
     def forward(self,x):
         x = self.encode(x)
