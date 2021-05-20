@@ -50,7 +50,7 @@ def test(net, ae, env, count=10, device="cpu"):
 
 
 if __name__ == "__main__":
-    device = torch.device("cuda")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_path = "./"
     writer = SummaryWriter(log_dir="./runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
 
