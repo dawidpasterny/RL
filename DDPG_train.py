@@ -20,12 +20,12 @@ GAMMA = 0.99
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-4
 REPLAY_SIZE = 80000
-REPLAY_INITIAL = 8000
+REPLAY_INITIAL = 80
 TEST_INTERV = 1000
 UNROLL = 2
 
 
-def test(net, ae, env, count=10, device="gpu"):
+def test(net, ae, env, count=10, device="cuda"):
     """ Plays a number of episodes using actor net
         Returns average episode reward and step count
     """
@@ -50,7 +50,7 @@ def test(net, ae, env, count=10, device="gpu"):
 
 
 if __name__ == "__main__":
-    device = torch.device("gpu")
+    device = torch.device("cuda")
     save_path = "./"
     writer = SummaryWriter(log_dir="./runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
 
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     print(act_net)
     print(crt_net)
 
-    buffer = common.ExperienceBuffer(buffer_size=REPLAY_SIZE)
+    buffer = common.ExperienceBuffer(buffer_size=REPLAY_SIZE,device=device)
     agent = common.AgentDDPG(act_net, env, buffer, ae, GAMMA, device=device, \
                                         ou_epsilon=1.0, unroll_steps=UNROLL)
     act_opt = optim.Adam(act_net.parameters(), lr=LEARNING_RATE)
@@ -101,16 +101,17 @@ if __name__ == "__main__":
             state_features = ae.encode(screens)
             next_state_features = ae.encode(next_screens)
 
-            # # Train auto encoder
-            # ae_opt.zero_grad()
-            # out = ae.decode(state_features)
-            # ae_loss = nn.functional.mse_loss(out, screens)
-            # ae_loss.backward()
-            # ae_opt.step()
-            # if ae_loss.item()<ae_loss_best:
-            #     torch.save(ae.state_dict(), save_path + "Autoencoder_best_2.dat")
+             # Train auto encoder
+            if exp_count<500000:
+               ae_opt.zero_grad()
+               out = ae.decode(state_features)
+               ae_loss = nn.functional.mse_loss(out, screens)
+               ae_loss.backward()
+               ae_opt.step()
+               if ae_loss.item()<ae_loss_best:
+                    torch.save(ae.state_dict(), save_path + "Autoencoder_best_2.dat")
 
-            # tracker.track("Loss_AE", ae_loss, exp_count)
+               tracker.track("Loss_AE", ae_loss, exp_count)
 
             # Concatenate with states
             states = torch.column_stack((torch.reshape(state_features.detach(), (BATCH_SIZE,-1)),states))
