@@ -158,7 +158,7 @@ if __name__ == "__main__":
                 writer.add_scalar("Test_mean_reward_10", mean_reward, exp_count)
                 writer.add_scalar("Test_mean_steps_10", mean_steps, exp_count)
 
-                if test_count>50:
+                if test_count>200:
                     torch.save(act_net.state_dict(), save_path + "Actor-worst.dat")
                     torch.save(crt_net.state_dict(), save_path + "Critic_worst.dat")
 
