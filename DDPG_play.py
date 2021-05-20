@@ -4,7 +4,7 @@ sys.path.append(os.getcwd())
 
 import gym
 from lib import model
-from Design.Environments import stage_creator as sc
+import stage_creator as sc
 
 import numpy as np
 import torch
@@ -22,7 +22,7 @@ if __name__ == "__main__":
     ae = model.Autoencoder(1, pretrained="./Autoencoder-FC.dat").float().to(device)
     obs_size += ae.get_bottleneck_size(res)[1]
     act_net = model.DDPGActor(obs_size, env.action_space.shape[0])
-    act_net.load_state_dict(torch.load("./Actor-best.dat"))
+    act_net.load_state_dict(torch.load("./Actor-best.dat", map_location=torch.device(device)))
     
     screen, state = env.reset()
     env.render(ae=ae, delay=.5)
