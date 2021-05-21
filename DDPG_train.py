@@ -23,7 +23,7 @@ REPLAY_SIZE = 80000
 REPLAY_INITIAL = 5000
 TEST_INTERV = 1000
 UNROLL = 2 # might not work for >1
-JOB = 4
+JOB = 3
 
 def test(net, ae, env, count=10, device="cpu"):
     """ Plays a number of episodes using actor net
@@ -53,6 +53,7 @@ if __name__ == "__main__":
     device = torch.device("cuda")
     save_path = "./"
     writer = SummaryWriter(log_dir="./runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
+    print(f"Executing job: {JOB}")
 
     # Envs
     env = sc.StageCreator(seed=3672871121734420758)
