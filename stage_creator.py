@@ -117,8 +117,15 @@ class StageCreator(Env):
         next_state = self.s.copy()
         if a[0]<D_MIN:
             # return self.s, -1, True, None
+            if self.traj!=[]:
+                # Update the next state nevertheless
+                d_old = self.traj[-1][-1]
+                next_state[:2] += pol2car((d_old+a[0])/2, 2*np.pi*a[1]) # new position
+                next_state[2] *= -d_old/a[0] # new ratio
             return next_state, reward, True, None
         if self.traj==[]:
+            # First step doesn't change the state because one gear doesn't make
+            # a gear stage
             done = self.check_collisions(*next_state[:2], a[0])
             self.traj.append((*self.p_start, a[0]))
             # reward = -int(done)

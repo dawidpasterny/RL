@@ -30,9 +30,11 @@ class AgentDDPG():
         self.ou_mu = kwargs.get("ou_mu", 0.0)
         self.ou_teta = kwargs.get("ou_teta", 0.15)
         self.ou_sigma = kwargs.get("ou_sigma", 0.15) # originally .2
-        self.ou_epsilon = kwargs.get("ou_epsilon", .6) # originally 1.0
+        self.ou_epsilon = kwargs.get("ou_epsilon", .5) # originally 1.0
         #Misc
-        self.clip = lambda x: [min(max(0.05,x[0]), .7), min(max(0,x[1]), 1)]
+        # clip d to 0.02 but env terminates if d<0.05, that way hopefully it will 
+        # learn not to take crazy small d
+        self.clip = lambda x: [min(max(0.02,x[0]), 1), min(max(0,x[1]), 1)] 
         self.unroll_steps = kwargs.get("unroll_steps", 1)
         self.gamma = gamma # for unrolling
         # self.fig, self.ax = plt.subplots(1,1)
@@ -86,8 +88,6 @@ class AgentDDPG():
             state = next_state
             screen = next_screen
             steps+=1
-            if steps>10:
-                break
             
         # Unroll from only the last state since other rewards are 0 either way
         # exp = [screen, state, action, reward, done, next_screen, next_state]

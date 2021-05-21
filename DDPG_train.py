@@ -7,6 +7,7 @@ import time
 import datetime
 import gym
 import numpy as np
+import argparse
 
 import torch
 import torch.optim as optim
@@ -18,12 +19,12 @@ import stage_creator as sc
 
 GAMMA = 0.99
 BATCH_SIZE = 64
-LEARNING_RATE = 2e-4
+LEARNING_RATE = 1e-4
 REPLAY_SIZE = 80000
 REPLAY_INITIAL = 5000
 TEST_INTERV = 1000
-UNROLL = 2 # might not work for >1
-JOB = 3
+UNROLL = 2 
+
 
 def test(net, ae, env, count=10, device="cpu"):
     """ Plays a number of episodes using actor net
@@ -38,7 +39,7 @@ def test(net, ae, env, count=10, device="cpu"):
             screen_t = torch.tensor([screen]).to(device)
             features = torch.reshape(ae.encode(screen_t), (1,-1)).float()
             # the reason not to use agent here is to just follow the policy
-            # we don't need exploration
+            # we don't need exploration (hence no clipping too)
             action = net(torch.column_stack((features, state_t)))[0].data.cpu().numpy()
             (screen, state), reward, done, _ = env.step(action)
             rewards += reward
@@ -50,13 +51,19 @@ def test(net, ae, env, count=10, device="cpu"):
 
 
 if __name__ == "__main__":
-    device = torch.device("cuda")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-j", "--job", required=True, default=0)
+    parser.add_argument("-s", "--seed", default=None)
+    parser.add_argument("-d", "--device", default="cuda")
+    args = parser.parse_args()
+
+    device = torch.device(args.device)
     save_path = "./"
     writer = SummaryWriter(log_dir="./runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
-    print(f"Executing job: {JOB}")
+    print(f"Executing job: {args.job}")
 
     # Envs
-    env = sc.StageCreator(seed=3672871121734420758)
+    env = sc.StageCreator(seed=args.seed)
     obs_size = env.observation_space.shape[0]
     env = sc.ScreenOutput(64, env) # 100X100 grid for CNN
     test_env = sc.StageCreator()
@@ -71,8 +78,9 @@ if __name__ == "__main__":
     
     tgt_act_net = model.TargetNet(act_net) # behavioral policy?
     tgt_crt_net = model.TargetNet(crt_net)
-    print(act_net)
-    print(crt_net)
+    print(f"Starting job #{args.job}")
+    # print(act_net)
+    # print(crt_net)
 
     buffer = common.ExperienceBuffer(buffer_size=REPLAY_SIZE,device=device)
     agent = common.AgentDDPG(act_net, env, buffer, ae, GAMMA, device=device, \
@@ -154,20 +162,20 @@ if __name__ == "__main__":
             if t > test_count:
                 test_count = t
                 mean_reward, mean_steps = test(act_net, ae, test_env, device=device)
-                print(f"JOB {JOB}: mean reward {mean_reward:.3f}, mean steps {mean_steps:.2f}")
+                print(f"JOB {args.job}: mean reward {mean_reward:.3f}, mean steps {mean_steps:.2f}")
 
                 writer.add_scalar("Test_mean_reward_10", mean_reward, exp_count)
                 writer.add_scalar("Test_mean_steps_10", mean_steps, exp_count)
 
                 if test_count>200:
-                    torch.save(act_net.state_dict(), save_path + "Actor-worst-{JOB}-"+datetime.datetime.now().strftime("%b%d_%H_%M_%S")+".dat")
-                    torch.save(crt_net.state_dict(), save_path + "Critic_worst-{JOB}-"+datetime.datetime.now().strftime("%b%d_%H_%M_%S")+".dat")
+                    torch.save(act_net.state_dict(), save_path + f"Actor-worst-{args.job}.dat")
+                    torch.save(crt_net.state_dict(), save_path + f"Critic_worst-{args.job}.dat")
 
                 if best_test_reward is None or best_test_reward < mean_reward:
                     if best_test_reward is not None:
-                        print(f"JOB {JOB}: best reward updated -> {mean_reward:.3f}")
-                        torch.save(act_net.state_dict(), save_path + "Actor-best-{JOB}-"+datetime.datetime.now().strftime("%b%d_%H_%M_%S")+".dat")
-                        torch.save(crt_net.state_dict(), save_path + "Critic_best-{JOB}-"++datetime.datetime.now().strftime("%b%d_%H_%M_%S")+".dat")
+                        print(f"JOB {args.job}: best reward updated -> {mean_reward:.3f}")
+                        torch.save(act_net.state_dict(), save_path + f"Actor-best-{args.job}.dat")
+                        torch.save(crt_net.state_dict(), save_path + f"Critic_best-{args.job}.dat")
                         # torch.save(ae.state_dict(), save_path + "Autoencoder_best_2.dat")
                     best_test_reward = mean_reward
 
