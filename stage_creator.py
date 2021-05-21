@@ -47,10 +47,10 @@ def generate_random_map(rng, w, h, boundary=0.2):
     # Boundary polygon
     if rng.rand()<boundary:
         # Generate a number of random points in [0,1]*w x [0,1]*h
-        points = rng.rand(30,2)*[w,h]
+        points = rng.rand(25,2)*[w,h]
         hull = ConvexHull(points)
         # Chose start and target points from the points within the hull
-        idx=rng.choice(np.delete(np.arange(30), hull.vertices),2)
+        idx=rng.choice(np.delete(np.arange(25), hull.vertices),2)
         (x_s,y_s), (x_t,y_t) = points[idx,:]
         m["boundary_points"] = points[hull.vertices,:]
     else:
@@ -76,7 +76,7 @@ def pol2car(r,phi):
 WIDTH = HEIGHT = 1
 RES = 64 # resolution for the screen output
 D_MAX = 0.7
-D_MIN = 0.01
+D_MIN = 0.05
 I_MAX = 10
 EPS = 0.05
 RATIOS = get_admisible_ratios(I_MAX)
@@ -117,7 +117,7 @@ class StageCreator(Env):
         next_state = self.s.copy()
         if a[0]<D_MIN:
             # return self.s, -1, True, None
-            return next_state.s, reward, True, None
+            return next_state, reward, True, None
         if self.traj==[]:
             done = self.check_collisions(*next_state[:2], a[0])
             self.traj.append((*self.p_start, a[0]))
@@ -135,7 +135,7 @@ class StageCreator(Env):
         p_dist = np.linalg.norm(next_state[:2]-next_state[-3:-1], 2)
         if p_dist<(a[0]+D_MIN)/2: # if the gear occludes the output
             done = True
-            if p_dist<0.02:
+            if p_dist<D_MIN/2:
                 i_ratio = next_state[-1]/next_state[2]
                 if i_ratio < 0:
                     # reward = -1
@@ -487,7 +487,7 @@ if __name__=="__main__":
     env = StageCreator(boundary=.8)
     env = ScreenOutput(128, env)
 
-    ae = model.Autoencoder(1, pretrained="./Autoencoder_best_2.dat").to(device).float()
+    ae = model.Autoencoder(1, pretrained="./Autoencoder-FC.dat").to(device).float()
     # print(ae.get_fe_out_size((1,RES,RES)))
     # ae=None
     env.render(ae=ae)
