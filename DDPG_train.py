@@ -34,6 +34,7 @@ def test(net, ae, env, count=10, device="cpu"):
     steps = 0
     for _ in range(count):
         screen, state = env.reset()
+        # print("Init state: ", state)
         while True: # play a full episode
             state_t = torch.tensor([state]).to(device).float()
             screen_t = torch.tensor([screen]).to(device)
@@ -41,7 +42,9 @@ def test(net, ae, env, count=10, device="cpu"):
             # the reason not to use agent here is to just follow the policy
             # we don't need exploration (hence no clipping too)
             action = net(torch.column_stack((features, state_t)))[0].data.cpu().numpy()
+            # print("Action: ", action)
             (screen, state), reward, done, _ = env.step(action)
+            # print("Next state: ", state)
             rewards += reward
             steps += 1
             if done:
@@ -52,9 +55,9 @@ def test(net, ae, env, count=10, device="cpu"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-j", "--job", required=True, default=0)
+    parser.add_argument("-j", "--job",  required=True, default=0)
     parser.add_argument("-s", "--seed", default=None)
-    parser.add_argument("-d", "--device", default="cuda")
+    parser.add_argument("-d", "--device", default="cpu")
     args = parser.parse_args()
 
     device = torch.device(args.device)
@@ -83,8 +86,7 @@ if __name__ == "__main__":
     # print(crt_net)
 
     buffer = common.ExperienceBuffer(buffer_size=REPLAY_SIZE,device=device)
-    agent = common.AgentDDPG(act_net, env, buffer, ae, GAMMA, device=device, \
-                                        ou_epsilon=1.0, unroll_steps=UNROLL)
+    agent = common.AgentDDPG(act_net, env, buffer, ae, GAMMA, device=device, unroll_steps=UNROLL)
     act_opt = optim.Adam(act_net.parameters(), lr=LEARNING_RATE)
     crt_opt = optim.Adam(crt_net.parameters(), lr=LEARNING_RATE)
     ae_opt = optim.Adam(ae.parameters(), lr=LEARNING_RATE)
@@ -144,7 +146,7 @@ if __name__ == "__main__":
             act_opt.zero_grad()
             cur_act = act_net(states.detach()) # detach not to modify Q-val here
             # Adjust actor's actions to maximize critics output Q
-            actor_loss = -crt_net(states, cur_act) # max = -min
+            actor_loss = -crt_net(states, cur_act) # actor loss is Q to be maxed! (max = -min)
             actor_loss = actor_loss.mean()
             actor_loss.backward() 
             act_opt.step()
@@ -162,7 +164,7 @@ if __name__ == "__main__":
             if t > test_count:
                 test_count = t
                 mean_reward, mean_steps = test(act_net, ae, test_env, device=device)
-                print(f"JOB {args.job}: mean reward {mean_reward:.3f}, mean steps {mean_steps:.2f}")
+                print(f"\nJOB {args.job}: mean reward {mean_reward:.3f}, mean steps {mean_steps:.2f}")
 
                 writer.add_scalar("Test_mean_reward_10", mean_reward, exp_count)
                 writer.add_scalar("Test_mean_steps_10", mean_steps, exp_count)

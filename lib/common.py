@@ -30,7 +30,8 @@ class AgentDDPG():
         self.ou_mu = kwargs.get("ou_mu", 0.0)
         self.ou_teta = kwargs.get("ou_teta", 0.15)
         self.ou_sigma = kwargs.get("ou_sigma", 0.15) # originally .2
-        self.ou_epsilon = kwargs.get("ou_epsilon", .5) # originally 1.0
+        self.ou_epsilon = kwargs.get("ou_epsilon", .25) # originally 1.0
+        self.a_state = np.zeros(env.action_space.shape) # agent state for OU
         #Misc
         # clip d to 0.02 but env terminates if d<0.05, that way hopefully it will 
         # learn not to take crazy small d
@@ -50,7 +51,6 @@ class AgentDDPG():
         """
         screen,state = self.env.reset()
         total_reward = 0.0
-        a_state = np.zeros(self.env.action_space.shape) # agent state for OU
         done = False
         steps=0
         local_buffer=[]
@@ -62,20 +62,20 @@ class AgentDDPG():
             features = torch.reshape(self.ae.encode(screen_t), (1,-1)).float()
             action_t = self.act_net(torch.column_stack((features, state_t))) # actions tensor
             action = action_t[0].data.cpu().numpy()
-            # action1=action
+            # action1=action.copy()
 
             # Orstein-Uhlenbeck step
             if self.ou_epsilon > 0:
-                a_state += self.ou_teta * (self.ou_mu - a_state) \
+                self.a_state += self.ou_teta * (self.ou_mu - self.a_state) \
                         + self.ou_sigma * np.random.normal(size=action.shape) # random noise
 
-                action += self.ou_epsilon * a_state
+                action += self.ou_epsilon * self.a_state
                 action = self.clip(action)
             # No random process, just normal noise
             # action += self.ou_sigma * np.random.normal(.5, .1, size=action.shape)
             # action = self.clip(action)
             
-            # print(f"{action1}, \t {a_state}, \t {action}")
+            # print(f"{action1}, \t {self.ou_epsilon*self.a_state}, \t {action}")
 
             # Perform step
             (next_screen, next_state), reward, done, _ = self.env.step(action)

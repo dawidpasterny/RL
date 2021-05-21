@@ -115,7 +115,7 @@ class StageCreator(Env):
         done = False
         reward=0
         next_state = self.s.copy()
-        if a[0]<D_MIN:
+        if a[0]<D_MIN or len(self.traj)>8:
             # return self.s, -1, True, None
             if self.traj!=[]:
                 # Update the next state nevertheless
@@ -142,12 +142,12 @@ class StageCreator(Env):
         p_dist = np.linalg.norm(next_state[:2]-next_state[-3:-1], 2)
         if p_dist<(a[0]+D_MIN)/2: # if the gear occludes the output
             done = True
-            if p_dist<D_MIN/2:
+            if p_dist<D_MIN:
                 i_ratio = next_state[-1]/next_state[2]
                 if i_ratio < 0:
                     # reward = -1
                     reward = 0
-                elif abs(np.log(i_ratio))<0.05:
+                elif abs(np.log(i_ratio))<0.5:
                     reward = len(self.traj)>1
                 else:
                     reward = 0
