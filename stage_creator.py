@@ -115,9 +115,9 @@ class StageCreator(Env):
         done = False
         reward=0
         next_state = self.s.copy()
-        # if a[0]<D_MIN:
-        #     # return self.s, -1, True, None
-        #     return next_state.s, reward, True, None
+        if a[0]<D_MIN:
+            # return self.s, -1, True, None
+            return next_state.s, reward, True, None
         if self.traj==[]:
             done = self.check_collisions(*next_state[:2], a[0])
             self.traj.append((*self.p_start, a[0]))
