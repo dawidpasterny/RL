@@ -77,7 +77,7 @@ WIDTH = HEIGHT = 1
 RES = 64 # resolution for the screen output
 D_MAX = 0.7
 D_MIN = 0.05
-I_MAX = 10
+I_MAX = 5
 EPS = 0.05
 RATIOS = get_admisible_ratios(I_MAX)
 

@@ -21,7 +21,7 @@ GAMMA = 0.99
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-4
 REPLAY_SIZE = 80000
-REPLAY_INITIAL = 5000
+REPLAY_INITIAL = 80
 TEST_INTERV = 1000
 UNROLL = 2 
 
@@ -38,7 +38,7 @@ def test(net, ae, env, count=10, device="cpu"):
         while True: # play a full episode
             state_t = torch.tensor([state]).to(device).float()
             screen_t = torch.tensor([screen]).to(device)
-            features = torch.reshape(ae.encode(screen_t), (1,-1)).float()
+            features = torch.reshape(ae(screen_t), (1,-1)).float()
             # the reason not to use agent here is to just follow the policy
             # we don't need exploration (hence no clipping too)
             action = net(torch.column_stack((features, state_t)))[0].data.cpu().numpy()
@@ -74,7 +74,7 @@ if __name__ == "__main__":
 
     # Networks
     ae = model.Autoencoder(1, pretrained="./Autoencoder-FC.dat", device=device).to(device).float()
-    # fe = lambda x: ae.encode(x)
+
     obs_size += 64
     act_net = model.DDPGActor(obs_size, env.action_space.shape[0]).to(device).float()
     crt_net = model.DDPGCritic(obs_size, env.action_space.shape[0]).to(device).float()
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     agent = common.AgentDDPG(act_net, env, buffer, ae, GAMMA, device=device, unroll_steps=UNROLL)
     act_opt = optim.Adam(act_net.parameters(), lr=LEARNING_RATE)
     crt_opt = optim.Adam(crt_net.parameters(), lr=LEARNING_RATE)
-    ae_opt = optim.Adam(ae.parameters(), lr=LEARNING_RATE)
+    # ae_opt = optim.Adam(ae.parameters(), lr=LEARNING_RATE)
     
     best_test_reward = None
     exp_count=0
@@ -109,8 +109,8 @@ if __name__ == "__main__":
                                 = buffer.sample(BATCH_SIZE)
 
             # Reduce dimensionality of the state screens
-            state_features = ae.encode(screens)
-            next_state_features = ae.encode(next_screens)
+            state_features = ae(screens)
+            next_state_features = ae(next_screens)
 
             # # Train auto encoder
             # if exp_count<50000:

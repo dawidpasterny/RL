@@ -59,7 +59,7 @@ class AgentDDPG():
             # print("State: ",state)
             state_t = torch.tensor([state]).to(self.device).float()
             screen_t = torch.tensor([screen]).to(self.device)
-            features = torch.reshape(self.ae.encode(screen_t), (1,-1)).float()
+            features = torch.reshape(self.ae(screen_t), (1,-1)).float()
             action_t = self.act_net(torch.column_stack((features, state_t))) # actions tensor
             action = action_t[0].data.cpu().numpy()
             # action1=action.copy()
@@ -220,6 +220,7 @@ class ExperienceBuffer:
         next_screens_t = torch.tensor(np.array(next_screens, dtype=np.float32)).to(self.device)
         next_states_t = torch.tensor(np.array(next_states, dtype=np.float32)).to(self.device)
         dones_t = torch.BoolTensor(dones).to(self.device)
+        # print(torch.count_nonzero(dones_t))
 
         return screens_t, states_t, actions_t, rewards_t, dones_t, next_screens_t, next_states_t
 

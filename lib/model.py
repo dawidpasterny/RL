@@ -37,11 +37,11 @@ class Autoencoder(nn.Module):
         x = self.decode(x)
         return x
 
-    def encode(self, x): # feature extractor
+    def __call__(self, x): # feature extractor
         x = self.encoder(x)
         # x = torch.flatten(x,1)
         # x = self.en_fc(x)
-        return x
+        return torch.sigmoid(x) # to normalize the features to the same order of magniture as state
 
     def decode(self,x):
         # x = nn.functional.relu(self.de_fc(x))
