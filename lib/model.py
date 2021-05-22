@@ -33,7 +33,7 @@ class Autoencoder(nn.Module):
             self.load_state_dict(torch.load(pretrained, map_location=torch.device(device)))
 
     def forward(self,x):
-        x = self.encode(x)
+        x = self.encoder(x)
         x = self.decode(x)
         return x
 

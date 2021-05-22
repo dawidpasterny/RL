@@ -21,7 +21,7 @@ GAMMA = 0.99
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-4
 REPLAY_SIZE = 80000
-REPLAY_INITIAL = 80
+REPLAY_INITIAL = 5000
 TEST_INTERV = 1000
 UNROLL = 2 
 
@@ -86,10 +86,10 @@ if __name__ == "__main__":
     # print(crt_net)
 
     buffer = common.ExperienceBuffer(buffer_size=REPLAY_SIZE,device=device)
-    agent = common.AgentDDPG(act_net, env, buffer, ae, GAMMA, device=device, unroll_steps=UNROLL)
+    agent = common.AgentDDPG(act_net, env, buffer, ae, GAMMA, device=device, ou_epsilon=0.5,  unroll_steps=UNROLL)
     act_opt = optim.Adam(act_net.parameters(), lr=LEARNING_RATE)
     crt_opt = optim.Adam(crt_net.parameters(), lr=LEARNING_RATE)
-    # ae_opt = optim.Adam(ae.parameters(), lr=LEARNING_RATE)
+    ae_opt = optim.Adam(ae.parameters(), lr=LEARNING_RATE)
     
     best_test_reward = None
     exp_count=0
@@ -112,17 +112,17 @@ if __name__ == "__main__":
             state_features = ae(screens)
             next_state_features = ae(next_screens)
 
-            # # Train auto encoder
-            # if exp_count<50000:
-            #    ae_opt.zero_grad()
-            #    out = ae.decode(state_features)
-            #    ae_loss = nn.functional.mse_loss(out, screens)
-            #    ae_loss.backward()
-            #    ae_opt.step()
-            #    if ae_loss.item()<ae_loss_best:
-            #         torch.save(ae.state_dict(), save_path + "Autoencoder_best_2.dat")
-
-            #    tracker.track("Loss_AE", ae_loss, exp_count)
+            # Train auto encoder
+            if exp_count<40000:
+               ae_opt.zero_grad()
+               out = ae.forward(screens)
+               ae_loss = nn.functional.mse_loss(out, screens)
+               ae_loss.backward()
+               ae_opt.step()
+               if ae_loss.item()<ae_loss_best:
+                    torch.save(ae.state_dict(), save_path + "Autoencoder_best_2.dat")
+           
+            tracker.track("Loss_AE", ae_loss, exp_count)
 
             # Concatenate with states
             states = torch.column_stack((torch.reshape(state_features.detach(), (BATCH_SIZE,-1)),states))
@@ -144,7 +144,7 @@ if __name__ == "__main__":
 
             # Train actor
             act_opt.zero_grad()
-            cur_act = act_net(states.detach()) # detach not to modify Q-val here
+            cur_act = act_net(states) # detach not to modify Q-val here
             # Adjust actor's actions to maximize critics output Q
             actor_loss = -crt_net(states, cur_act) # actor loss is Q to be maxed! (max = -min)
             actor_loss = actor_loss.mean()
