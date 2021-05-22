@@ -293,7 +293,7 @@ class ScreenOutput(ObservationWrapper):
         self.ax[1].pcolormesh(self.screen, cmap="binary")
         if ae!=None:
             inp = np.array([[self.screen]])
-            out = ae(torch.tensor(inp).float()).detach().numpy()
+            out = ae.forward(torch.tensor(inp).float()).detach().numpy()
             self.ax[2].pcolormesh(out[0][0], cmap="binary")
         plt.pause(delay)
 

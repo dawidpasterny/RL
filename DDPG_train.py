@@ -34,7 +34,7 @@ def test(net, ae, env, count=10, device="cpu"):
     steps = 0
     for _ in range(count):
         screen, state = env.reset()
-        # print("Init state: ", state)
+        print("Init state: ", state)
         while True: # play a full episode
             state_t = torch.tensor([state]).to(device).float()
             screen_t = torch.tensor([screen]).to(device)
@@ -42,9 +42,9 @@ def test(net, ae, env, count=10, device="cpu"):
             # the reason not to use agent here is to just follow the policy
             # we don't need exploration (hence no clipping too)
             action = net(torch.column_stack((features, state_t)))[0].data.cpu().numpy()
-            # print("Action: ", action)
+            print("Action: ", action)
             (screen, state), reward, done, _ = env.step(action)
-            # print("Next state: ", state)
+            print("Next state: ", state)
             rewards += reward
             steps += 1
             if done:
