@@ -43,7 +43,7 @@ if __name__ == "__main__":
         features = torch.reshape(ae(screen_t), (1,-1)).float()
         action_t = act_net(torch.column_stack((features, state_t))) # actions tensor
         action = action_t.squeeze(dim=0).data.numpy()
-        # print("Action: ", action)
+        print("Action: ", action)
         # stacked_state = torch.column_stack((torch.reshape(features.detach(), (1,-1)),state_t))
         # q_val = crt_net(stacked_state, action_t)
         # print("Q(s,a): ", q_val)
