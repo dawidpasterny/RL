@@ -41,10 +41,11 @@ def train_model(model: nn.Module, dataset: Dataset, batch_size: int, loss_functi
     accuracies = []
     num_train_batches = int(torch.ceil(torch.tensor(len(dataset) / batch_size)).item())
     for epoch in range(epochs):
-        train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
         for x,y in tqdm(train_loader, total=num_train_batches):
             ##########################################################
             # YOUR CODE HERE
+            x, y = x.to("cuda"), y.to("cuda")
             optimizer.zero_grad()
             loss, logits = loss_function(x, y, model, **loss_args)
             accuracy = torch.count_nonzero(torch.max(logits, dim=1).indices==y)
@@ -89,6 +90,7 @@ def predict_model(model: nn.Module, dataset: Dataset, batch_size: int, attack_fu
     for x, y in tqdm(test_loader, total=num_batches):
         ##########################################################
         # YOUR CODE HERE
+        x, y = x.to("cuda"), y.to("cuda")
         logits = model(x.requires_grad_(True))
         if attack_function!=None:
             x_pert = attack_function(logits, x, y, **attack_args)
@@ -149,11 +151,14 @@ def evaluate_robustness_smoothing(base_classifier: nn.Module, sigma: float, data
     for x, y in tqdm(test_loader, total=len(dataset)):
         ##########################################################
         # YOUR CODE HERE
+        x, y = x.to("cuda"), y.to("cuda")
         top_class, radius = model.certify(x, num_samples_1, num_samples_2, alpha, certification_batch_size)
-        radii.append(radius)
-        correct_certified += top_class==y
-        false_predictions += top_class!=y
-        abstains += top_class==-1
+        if top_class==-1:
+            abstains += 1
+        else:
+            radii.append(radius)
+            correct_certified += top_class==y
+            false_predictions += top_class!=y
         ##########################################################
     avg_radius = torch.tensor(radii).mean().item()
     return dict(abstains=abstains, false_predictions=false_predictions, correct_certified=correct_certified,

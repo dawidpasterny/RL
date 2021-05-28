@@ -125,7 +125,7 @@ class SmoothClassifier(nn.Module):
 
         # Cartification sampling
         class_counts_cert = self._sample_noise_predictions(inputs, num_samples, batch_size)
-        p_A_lower_bound = lower_confidence_bound(class_counts_cert[c], num_samples, alpha)
+        p_A_lower_bound = lower_confidence_bound(class_counts_cert[c].cpu(), num_samples, alpha)
         ##########################################################
 
         if p_A_lower_bound < 0.5: # prediction doesn't have sufficient precedence over ALL others
@@ -211,7 +211,7 @@ class SmoothClassifier(nn.Module):
                 ##########################################################
                 # YOUR CODE HERE
                 # Assemble a batch for inference by distorting input a number of times
-                x = torch.normal(torch.zeros(this_batch_size, *tuple(inputs[0].shape)), self.sigma)
+                x = torch.normal(torch.zeros(this_batch_size, *tuple(inputs[0].shape)), self.sigma).to("cuda")
                 x += inputs
                 scores = self.base_classifier(torch.clip(x,0,1))
 
