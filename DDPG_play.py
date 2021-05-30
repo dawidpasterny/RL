@@ -24,12 +24,12 @@ if __name__ == "__main__":
     env = sc.ScreenOutput(res, env)
     device = torch.device("cpu")
 
-    ae = model.Autoencoder(1, pretrained="./Autoencoder_best_2.dat").float().to(device)
+    ae = model.Autoencoder(1, pretrained="./Autoencoder-FC.dat").float().to(device)
     obs_size += ae.get_bottleneck_size(res)[1]
     act_net = model.DDPGActor(obs_size, env.action_space.shape[0])
-    act_net.load_state_dict(torch.load(f"Actor-worst-{JOB}.dat", map_location=torch.device(device)))
+    act_net.load_state_dict(torch.load(f"Actor-best-{JOB}.dat", map_location=torch.device(device)))
     crt_net = model.DDPGCritic(obs_size, env.action_space.shape[0]).to(device).float()
-    crt_net.load_state_dict(torch.load(f"Critic_worst-{JOB}.dat", map_location=torch.device(device)))
+    crt_net.load_state_dict(torch.load(f"Critic_best-{JOB}.dat", map_location=torch.device(device)))
 
     screen, state = env.reset()
     env.render(ae=ae, delay=.5)

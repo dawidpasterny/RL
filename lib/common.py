@@ -29,13 +29,14 @@ class AgentDDPG():
         # Orsetein-Uhlenbeck process parameters
         self.ou_mu = kwargs.get("ou_mu", 0.0)
         self.ou_teta = kwargs.get("ou_teta", 0.15)
-        self.ou_sigma = kwargs.get("ou_sigma", 0.15) # originally .2
+        self.ou_sigma = kwargs.get("ou_sigma", 0.2) # variance, originally .2
         self.ou_epsilon = kwargs.get("ou_epsilon", .25) # originally 1.0
         self.a_state = np.zeros(env.action_space.shape) # agent state for OU
         #Misc
         # clip d to 0.02 but env terminates if d<0.05, that way hopefully it will 
         # learn not to take crazy small d
-        self.clip = lambda x: [min(max(0.02,x[0]), 1), min(max(0,x[1]), 1)] 
+        # self.clip = lambda x: [min(max(0.02,x[0]), 1), min(max(0,x[1]), 1)] 
+        self.clip = lambda x: [min(max(0.02,x[0]), 1), x[1]%1] 
         self.unroll_steps = kwargs.get("unroll_steps", 1)
         self.gamma = gamma # for unrolling
         # self.fig, self.ax = plt.subplots(1,1)
@@ -54,6 +55,7 @@ class AgentDDPG():
         done = False
         steps=0
         local_buffer=[]
+        self.a_state = np.zeros(self.env.action_space.shape)
 
         while not done:
             # print("State: ",state)

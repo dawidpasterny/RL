@@ -47,10 +47,10 @@ def generate_random_map(rng, w, h, boundary=0.2):
     # Boundary polygon
     if rng.rand()<boundary:
         # Generate a number of random points in [0,1]*w x [0,1]*h
-        points = rng.rand(25,2)*[w,h]
+        points = rng.rand(35,2)*[w,h]
         hull = ConvexHull(points)
         # Chose start and target points from the points within the hull
-        idx=rng.choice(np.delete(np.arange(25), hull.vertices),2)
+        idx=rng.choice(np.delete(np.arange(35), hull.vertices),2)
         (x_s,y_s), (x_t,y_t) = points[idx,:]
         m["boundary_points"] = points[hull.vertices,:]
     else:
@@ -142,12 +142,12 @@ class StageCreator(Env):
         p_dist = np.linalg.norm(next_state[:2]-next_state[-3:-1], 2)
         if p_dist<(a[0]+D_MIN)/2: # if the gear occludes the output
             done = True
-            if p_dist<D_MIN:
+            if p_dist<D_MIN/2:
                 i_ratio = next_state[-1]/next_state[2]
                 if i_ratio < 0:
                     # reward = -1
                     reward = 0
-                elif abs(np.log(i_ratio))<0.5:
+                elif abs(np.log(i_ratio))<0.4:
                     reward = len(self.traj)>1
                 else:
                     reward = 0

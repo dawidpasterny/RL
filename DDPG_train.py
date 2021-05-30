@@ -86,7 +86,7 @@ if __name__ == "__main__":
     # print(crt_net)
 
     buffer = common.ExperienceBuffer(buffer_size=REPLAY_SIZE,device=device)
-    agent = common.AgentDDPG(act_net, env, buffer, ae, GAMMA, device=device, ou_epsilon=0.5,  unroll_steps=UNROLL)
+    agent = common.AgentDDPG(act_net, env, buffer, ae, GAMMA, device=device, ou_epsilon=0.2,  unroll_steps=UNROLL)
     act_opt = optim.Adam(act_net.parameters(), lr=LEARNING_RATE)
     crt_opt = optim.Adam(crt_net.parameters(), lr=LEARNING_RATE)
     ae_opt = optim.Adam(ae.parameters(), lr=LEARNING_RATE)
