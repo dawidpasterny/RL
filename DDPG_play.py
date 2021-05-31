@@ -9,13 +9,13 @@ import stage_creator as sc
 import numpy as np
 import torch
 import argparse
-JOB = 0
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # parser.add_argument("-m", "--model", required=True, help="Model file to load")
     parser.add_argument("-s", "--seed", default=None)
+    parser.add_argument("-j", "--job", default=None)
     args = parser.parse_args()
 
     env = sc.StageCreator(seed=args.seed)
@@ -27,9 +27,9 @@ if __name__ == "__main__":
     ae = model.Autoencoder(1, pretrained="./Autoencoder-FC.dat").float().to(device)
     obs_size += ae.get_bottleneck_size(res)[1]
     act_net = model.DDPGActor(obs_size, env.action_space.shape[0])
-    act_net.load_state_dict(torch.load(f"Actor-best-{JOB}.dat", map_location=torch.device(device)))
+    act_net.load_state_dict(torch.load(f"Actor-worst-{args.job}.dat", map_location=torch.device(device)))
     crt_net = model.DDPGCritic(obs_size, env.action_space.shape[0]).to(device).float()
-    crt_net.load_state_dict(torch.load(f"Critic_best-{JOB}.dat", map_location=torch.device(device)))
+    crt_net.load_state_dict(torch.load(f"Critic_worstgit pull-{args.job}.dat", map_location=torch.device(device)))
 
     screen, state = env.reset()
     env.render(ae=ae, delay=.5)
