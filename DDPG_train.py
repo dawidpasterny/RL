@@ -20,8 +20,8 @@ import stage_creator as sc
 GAMMA = 0.99
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-4
-REPLAY_SIZE = 80000
-REPLAY_INITIAL = 5000
+REPLAY_SIZE = 100000
+REPLAY_INITIAL = 10000
 TEST_INTERV = 1000
 UNROLL = 2 
 
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     device = torch.device(args.device)
     save_path = "./"
     writer = SummaryWriter(log_dir="./runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
-    print(f"Executing job: {args.job}")
+    print(f"Executing job: {args.job} on {device}")
 
     # Envs
     env = sc.StageCreator(seed=args.seed)
@@ -78,7 +78,9 @@ if __name__ == "__main__":
     obs_size += 64
     act_net = model.DDPGActor(obs_size, env.action_space.shape[0]).to(device).float()
     crt_net = model.DDPGCritic(obs_size, env.action_space.shape[0]).to(device).float()
-    
+    act_net.load_state_dict(torch.load("Actor-best-1.dat", map_location=torch.device(device)))
+    crt_net.load_state_dict(torch.load("Critic_best-1.dat", map_location=torch.device(device)))
+
     tgt_act_net = model.TargetNet(act_net) # behavioral policy?
     tgt_crt_net = model.TargetNet(crt_net)
     print(f"Starting job #{args.job}")
@@ -164,14 +166,14 @@ if __name__ == "__main__":
             if t > test_count:
                 test_count = t
                 mean_reward, mean_steps = test(act_net, ae, test_env, device=device)
-                print(f"\nJOB {args.job}: mean reward {mean_reward:.3f}, mean steps {mean_steps:.2f}")
+                print(f"\nJOB {args.job}, it {exp_count}: mean reward {mean_reward:.3f}, mean steps {mean_steps:.2f}")
 
                 writer.add_scalar("Test_mean_reward_10", mean_reward, exp_count)
                 writer.add_scalar("Test_mean_steps_10", mean_steps, exp_count)
 
-                if test_count>200:
-                    torch.save(act_net.state_dict(), save_path + f"Actor-worst-{args.job}.dat")
-                    torch.save(crt_net.state_dict(), save_path + f"Critic_worst-{args.job}.dat")
+                #if test_count>200:
+                #    torch.save(act_net.state_dict(), save_path + f"Actor-worst-{args.job}.dat")
+                #    torch.save(crt_net.state_dict(), save_path + f"Critic_worst-{args.job}.dat")
 
                 if best_test_reward is None or best_test_reward < mean_reward:
                     if best_test_reward is not None:
