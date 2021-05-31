@@ -55,7 +55,7 @@ class AgentDDPG():
         done = False
         steps=0
         local_buffer=[]
-        self.a_state = np.zeros(self.env.action_space.shape)
+#        self.a_state = np.zeros(self.env.action_space.shape)
 
         while not done:
             # print("State: ",state)
