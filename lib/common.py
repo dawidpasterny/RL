@@ -17,12 +17,11 @@ class AgentDDPG():
     """
     Agent implementing Orstein-Uhlenbeck exploration process
     """
-    def __init__(self, act_net, env, buffer, ae, gamma, device="cpu", **kwargs):
+    def __init__(self, act_net, env, buffer, gamma, device="cpu", **kwargs):
         self.act_net = act_net
         self.env = env # actor network
         self.exp_buffer = buffer
         self.device = device
-        self.ae = ae
         # Running average reward and steps
         self.episode_rewards = deque(maxlen=100)
         self.episode_steps = deque(maxlen=100)
@@ -61,8 +60,7 @@ class AgentDDPG():
             # print("State: ",state)
             state_t = torch.tensor([state]).to(self.device).float()
             screen_t = torch.tensor([screen]).to(self.device)
-            features = torch.reshape(self.ae(screen_t), (1,-1)).float()
-            action_t = self.act_net(torch.column_stack((features, state_t))) # actions tensor
+            action_t = self.act_net(screen_t, state_t) # actions tensor
             action = action_t[0].data.cpu().numpy()
             # action1=action.copy()
 
@@ -143,56 +141,6 @@ class AgentDDPG():
         else:
             mean_reward, mean_steps = 0,0
         return mean_reward, mean_steps
-
-
-    #         traj.append([screen, state, action, reward, done, next_screen, next_state])
-    #         if len(self.traj)==self.unroll_steps:
-    #             local_buffer.append(self.get_discounted_experience(traj, self.gamma))
-    #         state = next_state
-    #         screen = next_screen
-    #         steps+=1
-    #         if done:
-    #             # in case of very short episode (shorter than our steps count), send gathered history
-    #             if len(trajectory) < self.unroll_steps:
-    #                 local_buffer.append(self.get_discounted_experience(traj, self.gamma))
-    #             while len(trajectory) > 1: # exhaust current trajectory
-    #                 trajectory.popleft()
-    #                 local_buffer.append(self.get_discounted_experience(traj, self.gamma))
-            
-    #     self.episode_rewards.append(total_reward)
-    #     self.episode_steps.append(steps)
-
-    #     # HER, substitute target with the second to last state
-    #     n = len(local_buffer)
-    #     if n!=1:
-    #         # .pop() not to take the experience that terminated
-    #         target = local_buffer.pop()[1][-3:] # x_target, y_target, i_target
-    #         for i, exp in enumerate(local_buffer):
-    #             exp[1][-3:] = target # state target
-    #             exp[-1][-3:] = target # next state target
-    #             # Use unrolling for HER too (hard coded because reward is given 
-    #             # only at the very last step
-    #             exp[3] = self.gamma**(n-2-i) if n-2-i<self.unroll_steps else 0 # reward
-    #             self.exp_buffer.append(Experience(*exp))
-    #             steps +=1
-
-    #     return steps
-
-
-    # @staticmethod
-    # def get_discounted_experience(traj:list, gamma):
-    #     """ Adds the discounted experience to the self.exp_buffer (of type Experience)
-    #         and returns raw experience to be used in HER.
-    #         Utilizes the fact that rewards are sparse simplifiying discounting greatly.
-    #         exp = [screen, state, action, reward, done, next_screen, next_state]
-    #     """
-    #     if traj[-1][4]: # done
-    #         traj[0][3] = traj[-1][3]*self.gamma**(len(traj)-1) # discounted reward
-    #     # if not done the reward is 0 either way so we simply concatenate parts of 
-    #     # first and last experience of the traj accordingly
-    #     exp = traj[0][:4] + traj[-1][-3:]
-    #     self.exp_buffer.append(Experience(*exp))
-    #     return exp
 
 
 class ExperienceBuffer:
