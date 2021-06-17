@@ -197,10 +197,10 @@ class StageCreator(Env):
         if a[-1]==0: # if Bob is playing
             p_dist = np.linalg.norm(next_state[:2]-next_state[-3:-1], 2)
             if p_dist<D_MIN:
-                if next_state[2]*next_state[-1]<0: # opposite rotation direction
-                    return next_state, None, False, None
-                if abs(next_state[2]-next_state[-1])<EPS:
-                    return next_state, None, True, None # Succesfully finished
+                if next_state[2]*next_state[-1]>0: # just position and rotation direction
+                    return next_state, None, True, None
+                #if abs(next_state[2]-next_state[-1])<EPS:
+                #    return next_state, None, True, None # Succesfully finished
 
         return next_state, None, False, None
 

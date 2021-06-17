@@ -103,9 +103,9 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--seed", default=None)
     parser.add_argument("-n", "--num_threads", default=mp.cpu_count())
     args = parser.parse_args()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    num_threads = int(args.num_threads)-1
-    # num_threads = 1
+    device = "cpu"
+    #num_threads = int(args.num_threads)-1
+    num_threads = 32
 
     writer = SummaryWriter(log_dir=PATH+"/runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
     fe = FE((1,RES,RES), NUM_FEATURES).share_memory().float()

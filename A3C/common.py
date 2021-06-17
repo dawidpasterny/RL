@@ -67,8 +67,8 @@ class SelfplayAgent():
             (screen, state), _, done, _ = self.env.step(action+[1])
             if (stop and len(self.env.traj)>1) or a_steps>=MAX_STEPS:
                 # Stopping at a right moment is what Alice needs to learn actually
-                if stop:
-                    print(f"Alice stopped after {len(self.env.traj)} gears, {a_steps} steps")
+                #if stop:
+                #    print(f"Alice stopped after {len(self.env.traj)} gears, {a_steps} steps")
                 break
 
         
