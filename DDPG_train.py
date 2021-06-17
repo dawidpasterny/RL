@@ -59,7 +59,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--device")
     args = parser.parse_args()
 
-    device = "gpu" if torch.cuda.is_available() and args.device "gpu" else "cpu"
+    device = "cuda" if torch.cuda.is_available() and args.device=="cuda" else "cpu"
     job = args.job
     seed = args.seed
 

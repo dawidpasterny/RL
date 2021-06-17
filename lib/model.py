@@ -19,7 +19,10 @@ class FE(nn.Module):
         )
 
         conv_out_size = self._get_conv_out(input_shape)
-        self.fc = nn.Linear(conv_out_size, n_features)
+        self.fc = nn.Sequential(
+	    nn.Linear(conv_out_size, n_features),
+	    nn.Sigmoid()
+	)
 
     def _get_conv_out(self, shape):
         o = self.conv(torch.zeros(1, *shape))
