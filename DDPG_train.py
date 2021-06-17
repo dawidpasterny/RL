@@ -18,7 +18,7 @@ from lib import model, common
 import stage_creator as sc
 
 GAMMA = 0.99
-BATCH_SIZE = 84
+BATCH_SIZE = 64
 LEARNING_RATE = 1e-4
 REPLAY_SIZE = 80000
 REPLAY_INITIAL = 8000
@@ -54,12 +54,12 @@ def test(net, env, num_tests=5, device="cpu"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-j", "--job",  required=True, default=0)
+    parser.add_argument("-j", "--job",  required=True)
     parser.add_argument("-s", "--seed", default=None)
-    parser.add_argument("-d", "--device", default="cpu")
+    parser.add_argument("-d", "--device")
     args = parser.parse_args()
 
-    device = torch.device(args.device)
+    device = "gpu" if torch.cuda.is_available() and args.device "gpu" else "cpu"
     job = args.job
     seed = args.seed
 
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     print(f"Executing job: {job} on {device}")
 
     # Envs
-    env = sc.StageCreator(seed=seed, boundary=0)
+    env = sc.StageCreator(seed=seed, boundary=0.5)
     obs_size = env.observation_space.shape[0]
     env = sc.ScreenOutput(64, env)
     test_env = sc.StageCreator(boundary=0)
@@ -154,12 +154,14 @@ if __name__ == "__main__":
                 writer.add_scalar("Test_mean_steps_10", mean_steps, exp_count)
 
                 if test_count>300:
+                   torch.save(fe.state_dict(), save_path + f"FE-worst-{job}.dat")
                    torch.save(act_net.state_dict(), save_path + f"Actor-worst-{job}.dat")
                    torch.save(crt_net.state_dict(), save_path + f"Critic_worst-{job}.dat")
 
                 if best_test_reward is None or best_test_reward < mean_reward:
                     if best_test_reward is not None:
                         print(f"JOB {job}: best reward updated -> {mean_reward:.3f}")
+                        torch.save(fe.state_dict(), save_path + f"FE-best-{job}.dat")
                         torch.save(act_net.state_dict(), save_path + f"Actor-best-{job}.dat")
                         torch.save(crt_net.state_dict(), save_path + f"Critic_best-{job}.dat")
                     best_test_reward = mean_reward

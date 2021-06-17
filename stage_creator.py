@@ -35,34 +35,46 @@ def get_admisible_ratios(d):
     return ratios
 
 
-def generate_random_map(rng, w, h, boundary=0.2):
-    """ A map is a vector [x_start, y_start, x_target, y_target, i_target] i.e. 
-        position of start and finish as well as target ratio (i_start=1).
-        Additionaly a random boundary might be created
-        The csys for a map is given in the lower left corner so that all coordinates
-        are positive
-        boundary: probability of creating a map with boundary
+def generate_random_map(rng, w, h, boundary=0.2, target=True):
+    """ A map is a dictionary of boundary points, start and target (2D) coordinates 
+        and target ratio. The csys for a map is given in the lower left corner so 
+        that all coordinates are positive
+        - rng: random number generator
+        - w,h: width and height of the map
+        - boundary: probability of creating a map with boundary
+        - output: whether a map should contain target position and ratio or not
     """
     m ={}
-    # Boundary polygon
+    # Boundary polygon, parhaps not the most efficient way to do so
     if rng.rand()<boundary:
-        # Generate a number of random points in [0,1]*w x [0,1]*h
-        points = rng.rand(35,2)*[w,h]
-        hull = ConvexHull(points)
-        # Chose start and target points from the points within the hull
-        idx=rng.choice(np.delete(np.arange(35), hull.vertices),2)
-        (x_s,y_s), (x_t,y_t) = points[idx,:]
-        m["boundary_points"] = points[hull.vertices,:]
+        # if rng.rand()<.5: # polygon
+        #     # Generate a number of random points in [0,1]*w x [0,1]*h
+        #     points = rng.rand(25,2)*[w,h]
+        #     poly = ConvexHull(points).vertices
+        #     # Chose start and target points from the points within the hull
+        #     m["p_start"] = points[rng.choice(np.delete(np.arange(25), poly), replace=False)]
+        #     if target:
+        #         m["p_target"] = points[rng.choice(np.delete(np.arange(25), poly), replace=False)]
+        #     m["boundary_points"] = points[poly]
+
+        # Rectangle
+        x1,x2,y1,y2 = 0.2*rng.rand(4)
+        x2 = w - x2
+        y2 = h - y2
+        m["boundary_points"] = np.array([[x1,y1],[x2,y1],[x2,y2], [x1,y2]])
+        x_s, x_t = x1 + 1.5*D_MIN + rng.rand(2)*(x2-x1-3*D_MIN)
+        y_s, y_t = y1 + 1.5*D_MIN + rng.rand(2)*(y2-y1-3*D_MIN)
     else:
         x_s, x_t = 0.05*w + rng.rand(2)*0.9*w
         y_s, y_t = 0.05*h + rng.rand(2)*0.9*h
     m["p_start"] = [x_s,y_s]
-    m["p_target"] = [x_t,y_t]
 
-    # to ensure uniform distribution of target ratios
-    r = rng.choice(RATIOS)
-    r *= [-1,1][rng.rand()<0.5] # + or -
-    m["i_target"]= r
+    if target:
+        m["p_target"] = [x_t,y_t]
+        # to ensure uniform distribution of target ratios
+        r = rng.choice(RATIOS)
+        r *= [-1,1][rng.rand()<0.5] # + or -
+        m["i_target"]= r
 
     return m
 
@@ -147,10 +159,8 @@ class StageCreator(Env):
                 if i_ratio < 0:
                     # reward = -1
                     reward = 0
-                elif abs(np.log(i_ratio))<0.4:
-                    reward = len(self.traj)>1
                 else:
-                    reward = 0
+                    reward = 1 # just reach the position
             # i_ratio = self.s[-1]/self.s[2]
             # if i_ratio < 0:
             #     reward = -1
