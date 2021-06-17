@@ -1,0 +1,69 @@
+import numpy as np
+
+import torch
+import torch.nn as nn
+
+
+
+class FE(nn.Module):
+    """ Convolutional feature extractor to be shared among various networks """
+    def __init__(self, input_shape, n_features):
+        super().__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(input_shape[0], 32, kernel_size=8, stride=4), # 1 channel data
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1),
+            nn.ReLU()
+        )
+
+        conv_out_size = self._get_conv_out(input_shape)
+        self.fc = nn.Linear(conv_out_size, n_features)
+
+    def _get_conv_out(self, shape):
+        o = self.conv(torch.zeros(1, *shape))
+        return int(np.prod(o.size()))
+
+    def forward(self, x):
+        c = self.conv(x).view(x.size()[0],-1)
+        return self.fc(c)
+
+
+class AC(nn.Module):
+    def __init__(self, obs_size, act_size, fe):
+        super().__init__()
+        self.fe=fe
+
+        self.fc = nn.Sequential(
+            nn.Linear(obs_size, 256),
+            nn.ReLU()
+        )
+
+        self.mu = nn.Sequential( 
+            nn.Linear(256, act_size),
+            nn.Sigmoid() 
+        )
+
+        self.var = nn.Sequential(
+            nn.Linear(256, act_size),
+            nn.Softplus(),
+        )
+
+        self.val = nn.Linear(256, 1)
+
+        self.p = nn.Sequential( # p of Bernouli distribution
+            nn.Linear(256, 1),
+            nn.Sigmoid() 
+        )
+
+    def forward(self, screens, states):
+        c = self.fe(screens) # extract features from pixel input
+        c = self.fc(torch.column_stack([c, states]))
+        mu = self.mu(c)
+        var = self.var(c)
+        v = self.val(c)
+        p = self.p(c)
+        return mu, var, v, p
+
+
