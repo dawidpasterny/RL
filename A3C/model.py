@@ -9,6 +9,8 @@ class FE(nn.Module):
     """ Convolutional feature extractor to be shared among various networks """
     def __init__(self, input_shape, n_features):
         super().__init__()
+        self.input_shape = input_shape
+        self.n_features = n_features
         self.conv = nn.Sequential(
             nn.Conv2d(input_shape[0], 32, kernel_size=8, stride=4), # 1 channel data
             nn.ReLU(),
@@ -18,19 +20,44 @@ class FE(nn.Module):
             nn.ReLU()
         )
 
-        conv_out_size = self._get_conv_out(input_shape)
+        conv_out_size = self._get_conv_out()
         self.fc = nn.Sequential(
 	    nn.Linear(conv_out_size, n_features),
 	    nn.Sigmoid()
 	)
 
-    def _get_conv_out(self, shape):
-        o = self.conv(torch.zeros(1, *shape))
+    def _get_conv_out(self):
+        o = self.conv(torch.zeros(1, *self.input_shape))
         return int(np.prod(o.size()))
 
     def forward(self, x):
         c = self.conv(x).view(x.size()[0],-1)
         return self.fc(c)
+    
+    
+class AE(nn.Module):
+    def __init__(self, fe):
+        super().__init__()
+        self.fe = fe
+        self.conv_in_shape = fe.conv(torch.zeros(1,*fe.input_shape)).size()
+        print(self.conv_in_shape)
+        
+        self.decoder = nn.Sequential(
+            nn.Linear(fe.n_features, np.prod(self.conv_in_shape)),
+            nn.ReLU(),
+            nn.Unflatten(1,self.conv_in_shape[1:]),           
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2),
+            nn.ReLU(),
+            nn.ConvTranspose2d(16, fe.input_shape[0], kernel_size=8, stride=4), # 1 channel data
+            nn.ReLU()
+        )
+        
+    def forward(self, x):
+        x = self.fe(x)
+        return self.decoder(x)
+            
 
 
 class AC(nn.Module):

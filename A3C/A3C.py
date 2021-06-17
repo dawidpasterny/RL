@@ -15,7 +15,7 @@ import torch.multiprocessing as mp
 from torch.utils.tensorboard import SummaryWriter
 
 from common import SelfplayAgent, Tracker, MAX_STEPS
-from model import AC, FE
+from model import AC, FE, AE
 import stage_creator as sc
 
 GAMMA = 0.99
@@ -61,6 +61,11 @@ def cat_data(data:list):
     rewards = torch.cat(data[3])
 
     return screens, states, actions, rewards
+
+
+def sample_ae_batch(screens, batch_size):
+    indices = np.random.choice(len(screens), batch_size, replace=False)
+    return screens[indices].to("cuda")
     
 
 def train(train_data, net, optimizer, tracker, name):
@@ -109,12 +114,15 @@ if __name__ == "__main__":
 
     writer = SummaryWriter(log_dir=PATH+"/runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
     fe = FE((1,RES,RES), NUM_FEATURES).share_memory().float()
+    ae = AE(fe).float().to("cuda")
+    ae_opt = optim.Adam(ae.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
     alice = AC(NUM_FEATURES+6, 2, fe).share_memory().float()
     bob = AC(NUM_FEATURES+6, 2, fe).share_memory().float()
     alice_opt = optim.Adam(alice.parameters(), lr=LEARNING_RATE, eps=1e-3)
     bob_opt = optim.Adam(bob.parameters(), lr=LEARNING_RATE, eps=1e-3)
     print(alice)
     print(bob)
+    print(ae)
     
     # #For testing only 
     # env = sc.StageCreator(seed=args.seed)
@@ -131,11 +139,12 @@ if __name__ == "__main__":
     a_data = [[],[],[],[]]
     b_data = [[],[],[],[]]
     steps_count = 0
-    b_episodes = 0
+    i = 0
     batch_size = 0
     test_count = 0
     best_test_reward = None
     best_mean_reward = -MAX_STEPS
+    best_ae_loss = None
 
     try:
         with Tracker(writer,10) as tracker:
@@ -161,12 +170,33 @@ if __name__ == "__main__":
                     continue
 
                 # print(f'{mp.current_process().name} trains Bob and Alice')
-                train(cat_data(a_data), alice, alice_opt, tracker, "alice")
+                a_train_data = cat_data(a_data)
+                train(a_train_data, alice, alice_opt, tracker, "alice")
                 b_train_data = cat_data(b_data)
                 if len(b_train_data[0]) != 1:
-                    # b_episodes += len(b_data)
-                    # print(f"Bob's episodes: {b_episodes}/{steps_count}")
                     train(b_train_data, bob, bob_opt, tracker, "bob")
+                
+                # Autoencoder pass
+                i += 1
+                if i%10==0:
+                    screens = torch.cat([a_train_data[0], b_train_data[0]])
+                    training_batch = sample_ae_batch(screens, 128)
+                    
+                    ae_opt.zero_grad()
+                    out = ae.forward(training_batch)
+                    ae_loss = torch.nn.MSELoss()(out, training_batch)
+                    ae_loss.backward()
+                    ae_opt.step()
+
+                    if best_ae_loss is None or ae_loss < best_ae_loss:
+                        torch.save(ae.state_dict(), PATH + f"AE-{args.job}.dat")
+                        #if best_ae_loss is not None:
+                            #print(f"Best loss updated {best_loss} -> {loss}, model saved")
+                        best_ae_loss = ae_loss
+
+                    writer.add_scalar("AE loss", ae_loss, i)
+
+                
                 a_data = [[],[],[],[]]
                 b_data = [[],[],[],[]]
                 batch_size = 0
