@@ -65,7 +65,7 @@ def cat_data(data:list):
 
 def sample_ae_batch(screens, batch_size):
     indices = np.random.choice(len(screens), batch_size, replace=False)
-    return screens[indices].to("cuda")
+    return screens[indices]
     
 
 def train(train_data, net, optimizer, tracker, name):
@@ -114,7 +114,7 @@ if __name__ == "__main__":
 
     writer = SummaryWriter(log_dir=PATH+"/runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
     fe = FE((1,RES,RES), NUM_FEATURES).share_memory().float()
-    ae = AE(fe).float().to("cuda")
+    ae = AE(fe).float()
     ae_opt = optim.Adam(ae.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
     alice = AC(NUM_FEATURES+6, 2, fe).share_memory().float()
     bob = AC(NUM_FEATURES+6, 2, fe).share_memory().float()
