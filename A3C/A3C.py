@@ -15,7 +15,7 @@ import torch.multiprocessing as mp
 from torch.utils.tensorboard import SummaryWriter
 
 from common import SelfplayAgent, Tracker, MAX_STEPS
-from model import AC, FE, AE
+from model import AC, FE, AE, Autoencoder
 import stage_creator as sc
 
 GAMMA = 0.99
@@ -24,11 +24,11 @@ ENTROPY_BETA = 0.01
 CLIP_GRAD = 0.1
 
 # NUM_THREADS = 8 
-NUM_FEATURES = 128
+NUM_FEATURES = 64
 BATCH_SIZE = 32
 TEST_INTERV = 1000
-RES = 84
-PATH = "./"
+RES = 64
+PATH = "./A3C/"
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 
@@ -110,19 +110,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
     device = "cpu"
     #num_threads = int(args.num_threads)-1
-    num_threads = 32
+    num_threads = 8
 
     writer = SummaryWriter(log_dir=PATH+"/runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
-    fe = FE((1,RES,RES), NUM_FEATURES).share_memory().float()
-    ae = AE(fe).float()
-    ae_opt = optim.Adam(ae.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
+
+    fe = Autoencoder(1, pretrained=PATH+"Autoencoder-FC.dat", device=device).to(device).float().eval()
+    # fe = FE((1,RES,RES), NUM_FEATURES).share_memory().float()
+    # ae = AE(fe).float()
+    # ae_opt = optim.Adam(ae.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
     alice = AC(NUM_FEATURES+6, 2, fe).share_memory().float()
     bob = AC(NUM_FEATURES+6, 2, fe).share_memory().float()
     alice_opt = optim.Adam(alice.parameters(), lr=LEARNING_RATE, eps=1e-3)
     bob_opt = optim.Adam(bob.parameters(), lr=LEARNING_RATE, eps=1e-3)
     print(alice)
     print(bob)
-    print(ae)
+    print(fe)
     
     # #For testing only 
     # env = sc.StageCreator(seed=args.seed)
@@ -176,25 +178,25 @@ if __name__ == "__main__":
                 if len(b_train_data[0]) != 1:
                     train(b_train_data, bob, bob_opt, tracker, "bob")
                 
-                # Autoencoder pass
-                i += 1
-                if i%10==0:
-                    screens = torch.cat([a_train_data[0], b_train_data[0]])
-                    training_batch = sample_ae_batch(screens, 128)
+                # # Autoencoder pass
+                # i += 1
+                # if i%10==0:
+                #     screens = torch.cat([a_train_data[0], b_train_data[0]])
+                #     training_batch = sample_ae_batch(screens, 128)
                     
-                    ae_opt.zero_grad()
-                    out = ae.forward(training_batch)
-                    ae_loss = torch.nn.MSELoss()(out, training_batch)
-                    ae_loss.backward()
-                    ae_opt.step()
+                #     ae_opt.zero_grad()
+                #     out = ae.forward(training_batch)
+                #     ae_loss = torch.nn.MSELoss()(out, training_batch)
+                #     ae_loss.backward()
+                #     ae_opt.step()
 
-                    if best_ae_loss is None or ae_loss < best_ae_loss:
-                        torch.save(ae.state_dict(), PATH + f"AE-{args.job}.dat")
-                        #if best_ae_loss is not None:
-                            #print(f"Best loss updated {best_loss} -> {loss}, model saved")
-                        best_ae_loss = ae_loss
+                #     if best_ae_loss is None or ae_loss < best_ae_loss:
+                #         torch.save(ae.state_dict(), PATH + f"AE-{args.job}.dat")
+                #         #if best_ae_loss is not None:
+                #             #print(f"Best loss updated {best_loss} -> {loss}, model saved")
+                #         best_ae_loss = ae_loss
 
-                    writer.add_scalar("AE loss", ae_loss, i)
+                #     writer.add_scalar("AE loss", ae_loss, i)
 
                 
                 a_data = [[],[],[],[]]

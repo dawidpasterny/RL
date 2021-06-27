@@ -44,11 +44,11 @@ class SelfplayAgent():
         done = False
         stop = False
         screen, state = self.env.reset() # p_target and i_target are initialized to p_start and 1.0
+        # self.env.render()
 
         # Everything here happens on cpu
         # print("Alice's turn")
         while True:
-            # self.env.render()
             a_steps += 1
             a_states.append(state)
             a_screens.append(screen)
@@ -63,14 +63,14 @@ class SelfplayAgent():
             action = self.clip(np.random.normal(mu, sigma)[0])
             a_actions.append(action)
 
-            # Perform step +[1] to indicate that it's alice
-            (screen, state), _, done, _ = self.env.step(action+[1])
             if (stop and len(self.env.traj)>1) or a_steps>=MAX_STEPS:
                 # Stopping at a right moment is what Alice needs to learn actually
-                #if stop:
-                #    print(f"Alice stopped after {len(self.env.traj)} gears, {a_steps} steps")
+                # print(f"Alice stopped after {len(self.env.traj)} gears, {a_steps} steps")
                 break
 
+            # Perform step +[1] to indicate that it's alice
+            (screen, state), _, done, _ = self.env.step(action+[1])
+            # self.env.render()
         
         # print("Bob's turn")
         target = state
@@ -96,6 +96,9 @@ class SelfplayAgent():
 
             # Perform step +[0] to indicate that it's bob
             (screen, state), _, done, _ = self.env.step(action+[0])
+            # self.env.render()
+            # if done:
+            #     print(f"Bob solved an environment with {len(self.env.traj)} gears")
 
         # Calculate rewards
         r_b = -b_steps

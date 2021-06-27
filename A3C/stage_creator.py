@@ -182,27 +182,73 @@ class StageCreator(Env):
         """
         next_state = self.s.copy()
         self.steps += 1
+        reward = 0
 
-        if a[0]<D_MIN:
-            return next_state, None, False, None # invalid action
-        if self.traj!=[]: # If at least one gear already placed
-            d_old = self.traj[-1][-1]
-            next_state[:2] += pol2car((d_old+a[0])/2, 2*np.pi*a[1]) # new position
-            next_state[2] *= -d_old/a[0] # new ratio
-        if self.check_collisions(*next_state[:2], a[0]):
-            return self.s.copy(), None, False, None # return old state
-        self.traj.append((*next_state[:2], a[0]))
-        self.s = next_state
-        
-        if a[-1]==0: # if Bob is playing
+        if len(a)==2: # evaluation mode
+            if a[0]<D_MIN or len(self.traj)>8:
+                # return self.s, -1, True, None
+                if self.traj!=[]:
+                    # Update the next state nevertheless
+                    d_old = self.traj[-1][-1]
+                    next_state[:2] += pol2car((d_old+a[0])/2, 2*np.pi*a[1]) # new position
+                    next_state[2] *= -d_old/a[0] # new ratio
+                return next_state, reward, True, None
+            if self.traj==[]:
+                # First step doesn't change the state because one gear doesn't make
+                # a gear stage
+                done = self.check_collisions(*next_state[:2], a[0])
+                self.traj.append((*self.p_start, a[0]))
+                # reward = -int(done)
+            else:
+                d_old = self.traj[-1][-1]
+                # print("Pre update: ", self.s)
+                next_state[:2] += pol2car((d_old+a[0])/2, 2*np.pi*a[1]) # new position
+                next_state[2] *= -d_old/a[0] # new ratio
+                done = self.check_collisions(*next_state[:2], a[0])
+                self.traj.append((*next_state[:2], a[0]))
+                # print("Post update: ", self.s)
+                # reward = -int(done)
+            
             p_dist = np.linalg.norm(next_state[:2]-next_state[-3:-1], 2)
-            if p_dist<D_MIN:
-                if next_state[2]*next_state[-1]>0: # just position and rotation direction
-                    return next_state, None, True, None
-                #if abs(next_state[2]-next_state[-1])<EPS:
-                #    return next_state, None, True, None # Succesfully finished
+            if p_dist<(a[0]+D_MIN)/2: # if the gear occludes the output
+                done = True
+                if p_dist<D_MIN/2:
+                    i_ratio = next_state[-1]/next_state[2]
+                    if i_ratio < 0:
+                        reward = 0
+                    # elif abs(np.log(i_ratio))<0.4:
+                    #     reward = len(self.traj)>1
+                    else:
+                        reward = 1 # just reach position and corent rotation direction
 
-        return next_state, None, False, None
+            self.s = next_state
+            return next_state, reward, done, None
+
+        elif len(a)==3: # training mode
+            if a[0]<D_MIN:
+                return next_state, None, False, None # invalid action
+            if self.traj!=[]: # If at least one gear already placed
+                d_old = self.traj[-1][-1]
+                next_state[:2] += pol2car((d_old+a[0])/2, 2*np.pi*a[1]) # new position
+                next_state[2] *= -d_old/a[0] # new ratio
+            if self.check_collisions(*next_state[:2], a[0]):
+                return self.s.copy(), None, False, None # return old state
+            self.traj.append((*next_state[:2], a[0]))
+            self.s = next_state
+            
+            if a[-1]==0: # if Bob is playing
+                p_dist = np.linalg.norm(next_state[:2]-next_state[-3:-1], 2)
+                if p_dist<D_MIN:
+                    if next_state[2]*next_state[-1]<0: # just position and rotation direction
+                        # print("Almost solved, wrong ratio")
+                        return next_state, None, False, None
+                    if abs(next_state[2]-next_state[-1])<EPS:
+                        return next_state, None, True, None # Succesfully finished
+
+            return next_state, None, False, None
+        
+        else:
+            Exception("Unsuported mode")
 
 
     def render(self, mode="human", delay=0.1, path=None, ae=None):
@@ -385,58 +431,19 @@ class ScreenOutput(ObservationWrapper):
 
 
     def _draw_circle(self,x,y,d):
-        """ Draws pixelated circles. 
-            Takes into account the point's position within the cell 
+        """ Draws pixelated circle centered at x,y with diamter d. 
+            Takes into account the point's position within the cell. 
         """
         N = self.N # resolution
-        # First y range (min & max to draw even if the circle is too big)
-        y_u = min(int((y+d/2)*N+0.5), N)
+        # Determine the boundary cell indices (min & max to draw even if the circle is too big)
+        y_u = min(int((y+d/2)*N+0.5), N) # 0.5 is because int() is essentially floor operator
         y_l = max(int((y-d/2)*N+0.5),0)
-        x_c, y_c = (np.array([x,y])*N).astype(int)
-        res = (y+d/2)%self.h_y # "residual"
+        x_r = min(int((x+d/2)*N+0.5), N)
+        x_l = max(int((x-d/2)*N+0.5),0)
+
+        inside = lambda x_i,y_i: np.sqrt(((y_i+.5)/N-y)**2 + ((x_i+.5)/N-x)**2)<d/2
         for y_idx in range(y_l,y_u): # range is [) !
-            # what is the x range at particular height y_idx + res
-            if y_idx<y_c:
-                dx = d/2*np.cos(np.arcsin(max(-1,2*((y_idx-1)/N + res - y)/d)))
-            elif y_idx>y_c:
-                dx = d/2*np.cos(np.arcsin(min(1,2*(y_idx/N + res - y)/d)))
-            else:
-                dx = d/2
-            # x range: x_left, x_right
-            x_l = max(int((x-dx)*N+0.5), 0)
-            x_r = min(int((x+dx)*N+0.5), N)
-            # x_r +=1 if x_l==x_r else 0
-            self.screen[y_idx, x_l:x_r] = 1 # array indexeing is also [)
-
-
-if __name__=="__main__":
-    device = torch.device("cpu")
-    env = StageCreator(boundary=.8, target=True)
-    env = ScreenOutput(128, env)
-
-    ae = model.Autoencoder(1, pretrained="./Design/Models/DDPG/Autoencoder-FC.dat").to(device).float()
-    # print(ae.get_fe_out_size((1,RES,RES)))
-    # ae=None
-    env.render(ae=ae)
-
-    print(f"Target ratio:{env.s[-1]}")
-    print(f"Current ratio:{env.s[2]}")
-
-    # play manually
-    flag = True
-    while flag:
-        d,phi = input("Action (d [D_MIN,DMAX], phi [0,1]) or q to quit:").split()
-        new_state, reward, done, _ = env.step((float(d),float(phi)))
-        # new_state, done = env.step((float(d),float(phi)))
-        
-        print(f"Target ratio:{env.s[-1]}")
-        print(f"Current ratio:{env.s[2]}")
-        env.render(ae=ae)
-        if done:
-            print(f"Reward: {reward}")
-            a = input("Start again with new env (y/n)?: \n")
-            flag = a=='y'
-            env.reset()
-            env.render(ae=ae)
-
-    plt.close(fig='all')
+            for x_idx in range(x_l,x_r):
+                if inside(x_idx, y_idx):
+                    self.screen[y_idx, x_idx] = 1
+    

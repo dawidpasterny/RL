@@ -28,7 +28,7 @@ class AgentDDPG():
         # Orsetein-Uhlenbeck process parameters
         self.ou_mu = kwargs.get("ou_mu", 0.0)
         self.ou_teta = kwargs.get("ou_teta", 0.15)
-        self.ou_sigma = kwargs.get("ou_sigma", np.array([0.2, 0.4])) # variance, originally .2
+        self.ou_sigma = kwargs.get("ou_sigma", np.array([0.2, 0.3])) # variance, originally .2
         self.ou_epsilon = kwargs.get("ou_epsilon", .25) # originally 1.0
         self.a_state = np.zeros(env.action_space.shape) # agent state for OU
         #Misc

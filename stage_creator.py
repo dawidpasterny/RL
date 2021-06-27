@@ -110,8 +110,8 @@ class StageCreator(Env):
         self.b_points = env_map.get("boundary_points",None) # boundary points
         self.screen = None
 
-        # state appended with the (x_current, y_current, i_current, x_target, y_target, i_target)
-        self.observation_space = spaces.Box(low=np.array([0,0,-100,0,0,-100]), high=np.array([1,1,100,1,1,100]), dtype=np.float)
+        # state appended with the (x_current, y_current, i_current, d_current, x_target, y_target, i_target)
+        self.observation_space = spaces.Box(low=np.array([0,0,-100,0,0,0,-100]), high=np.array([1,1,100,1,1,1,100]), dtype=np.float)
         # action is a tuple (diam, phi)
         self.action_space = spaces.Box(low=np.array([D_MIN,0]), high=np.array([D_MAX, 1]), dtype=np.float)
 
@@ -127,11 +127,12 @@ class StageCreator(Env):
         done = False
         reward=0
         next_state = self.s.copy()
+        d_old = next_state[3]
+        next_state[3] = a[0]
         if a[0]<D_MIN or len(self.traj)>8:
             # return self.s, -1, True, None
             if self.traj!=[]:
                 # Update the next state nevertheless
-                d_old = self.traj[-1][-1]
                 next_state[:2] += pol2car((d_old+a[0])/2, 2*np.pi*a[1]) # new position
                 next_state[2] *= -d_old/a[0] # new ratio
             return next_state, reward, True, None
@@ -142,7 +143,6 @@ class StageCreator(Env):
             self.traj.append((*self.p_start, a[0]))
             # reward = -int(done)
         else:
-            d_old = self.traj[-1][-1]
             # print("Pre update: ", self.s)
             next_state[:2] += pol2car((d_old+a[0])/2, 2*np.pi*a[1]) # new position
             next_state[2] *= -d_old/a[0] # new ratio
@@ -160,7 +160,7 @@ class StageCreator(Env):
                     # reward = -1
                     reward = 0
                 else:
-                    reward = 1 # just reach the position
+                    reward = 1 # just reach the position with correct rotation direction
             # i_ratio = self.s[-1]/self.s[2]
             # if i_ratio < 0:
             #     reward = -1
@@ -198,7 +198,7 @@ class StageCreator(Env):
             self.p_target = env_map["p_target"] # target position
             self.p_start = env_map["p_start"]
             self.b_points = env_map.get("boundary_points",None)
-        self.s = np.array([*self.p_start, 1.0, *self.p_target, self.i_target])
+        self.s = np.array([*self.p_start, 1.0, 0, *self.p_target, self.i_target])
         self.traj = []
 
         plt.cla()
@@ -396,28 +396,21 @@ class ScreenOutput(ObservationWrapper):
 
 
     def _draw_circle(self,x,y,d):
-        """ Draws pixelated circles. 
-            Takes into account the point's position within the cell 
+        """ Draws pixelated circle centered at x,y with diamter d. 
+            Takes into account the point's position within the cell. 
         """
         N = self.N # resolution
-        # First y range (min & max to draw even if the circle is too big)
-        y_u = min(int((y+d/2)*N+0.5), N)
+        # Determine the boundary cell indices (min & max to draw even if the circle is too big)
+        y_u = min(int((y+d/2)*N+0.5), N) # 0.5 is because int() is essentially floor operator
         y_l = max(int((y-d/2)*N+0.5),0)
-        x_c, y_c = (np.array([x,y])*N).astype(int)
-        res = (y+d/2)%self.h_y # "residual"
+        x_r = min(int((x+d/2)*N+0.5), N)
+        x_l = max(int((x-d/2)*N+0.5),0)
+
+        inside = lambda x_i,y_i: np.sqrt(((y_i+.5)/N-y)**2 + ((x_i+.5)/N-x)**2)<d/2
         for y_idx in range(y_l,y_u): # range is [) !
-            # what is the x range at particular height y_idx + res
-            if y_idx<y_c:
-                dx = d/2*np.cos(np.arcsin(max(-1,2*((y_idx-1)/N + res - y)/d)))
-            elif y_idx>y_c:
-                dx = d/2*np.cos(np.arcsin(min(1,2*(y_idx/N + res - y)/d)))
-            else:
-                dx = d/2
-            # x range: x_left, x_right
-            x_l = max(int((x-dx)*N+0.5), 0)
-            x_r = min(int((x+dx)*N+0.5), N)
-            # x_r +=1 if x_l==x_r else 0
-            self.screen[y_idx, x_l:x_r] = 1 # array indexeing is also [)
+            for x_idx in range(x_l,x_r):
+                if inside(x_idx, y_idx):
+                    self.screen[y_idx, x_idx] = 1
 
 
     # def _draw_circle(self,x,y,d):

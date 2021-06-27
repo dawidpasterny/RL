@@ -18,7 +18,7 @@ from lib import model, common
 import stage_creator as sc
 
 GAMMA = 0.99
-BATCH_SIZE = 64
+BATCH_SIZE = 124
 LEARNING_RATE = 1e-4
 REPLAY_SIZE = 80000
 REPLAY_INITIAL = 8000
@@ -75,18 +75,20 @@ if __name__ == "__main__":
     env = sc.StageCreator(seed=seed, boundary=0.5)
     obs_size = env.observation_space.shape[0]
     env = sc.ScreenOutput(64, env)
-    test_env = sc.StageCreator(boundary=0)
+    test_env = sc.StageCreator(boundary=0.5)
     test_env = sc.ScreenOutput(64, test_env)
 
     # Networks
-    fe = model.FE((1,64,64), 128).to(device).float()
-    obs_size += 128
+    fe = model.Autoencoder(1, pretrained="./Autoencoder-FC.dat", device=device).to(device).float().eval() # eval locks the gradients
+    # fe = model.FE((1,64,64), 128).to(device).float()
+    obs_size += 64
     act_net = model.DDPGActor(obs_size, env.action_space.shape[0], fe).to(device).float()
     crt_net = model.DDPGCritic(obs_size, env.action_space.shape[0], fe).to(device).float()
 
     tgt_act_net = model.TargetNet(act_net) 
     tgt_crt_net = model.TargetNet(crt_net)
     print(f"Starting job #{job}")
+    # print(fe)
     print(act_net)
     print(crt_net)
 
