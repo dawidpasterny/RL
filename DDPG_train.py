@@ -23,7 +23,7 @@ LEARNING_RATE = 1e-4
 REPLAY_SIZE = 80000
 REPLAY_INITIAL = 8000
 TEST_INTERV = 1000
-UNROLL = 2
+UNROLL = 3
 
 
 def test(net, env, num_tests=5, device="cpu"):
@@ -89,11 +89,11 @@ if __name__ == "__main__":
     tgt_crt_net = model.TargetNet(crt_net)
     print(f"Starting job #{job}")
     # print(fe)
-    print(act_net)
-    print(crt_net)
+    #print(act_net)
+    #print(crt_net)
 
     buffer = common.ExperienceBuffer(buffer_size=REPLAY_SIZE,device=device)
-    agent = common.AgentDDPG(act_net, env, buffer, GAMMA, device=device, ou_epsilon=0.2,  unroll_steps=UNROLL)
+    agent = common.AgentDDPG(act_net, env, buffer, GAMMA, device=device, ou_epsilon=0.25,  unroll_steps=UNROLL)
     act_opt = optim.Adam(act_net.parameters(), lr=LEARNING_RATE)
     crt_opt = optim.Adam(crt_net.parameters(), lr=LEARNING_RATE)
     
