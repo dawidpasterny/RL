@@ -39,36 +39,36 @@ def random_exp_gen(env, batch_size):
 
         yield batch
 
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-# auten = ae.Autoencoder84(1,False)
-# optimizer = torch.optim.Adam(auten.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
-# writer = SummaryWriter(log_dir="./Design/Models/AE/autoencoder-runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
-# best_loss = None
-# exp_gen = random_exp_gen(env,BATCH_SIZE)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+auten = ae.Autoencoder84(1,False)
+optimizer = torch.optim.Adam(auten.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
+writer = SummaryWriter(log_dir="./Design/Models/AE/autoencoder-runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
+best_loss = None
+exp_gen = random_exp_gen(env,BATCH_SIZE)
 
-# for i, batch in enumerate(exp_gen):
-#     optimizer.zero_grad()
-#     out = auten.forward(batch)
-#     loss = nn.MSELoss()(out, batch)
-#     loss.backward()
-#     optimizer.step()
+for i, batch in enumerate(exp_gen):
+    optimizer.zero_grad()
+    out = auten.forward(batch)
+    loss = nn.MSELoss()(out, batch)
+    loss.backward()
+    optimizer.step()
 
-#     if best_loss is None or loss < best_loss:
-#         torch.save(auten.state_dict(), "./Design/Models/AE/Autoencoder-best.dat")
-#         if best_loss is not None:
-#             print(f"Best loss updated {best_loss} -> {loss}, model saved")
-#         best_loss = loss
+    if best_loss is None or loss < best_loss:
+        torch.save(auten.state_dict(), "./Design/Models/AE/Autoencoder-best.dat")
+        if best_loss is not None:
+            print(f"Best loss updated {best_loss} -> {loss}, model saved")
+        best_loss = loss
 
-#     writer.add_scalar("loss", loss, i)
-#     # writer.add_scalar("speed", speed, frame_idx)
+    writer.add_scalar("loss", loss, i)
+    # writer.add_scalar("speed", speed, frame_idx)
 
-#     print(f"batch: {i}, loss: {loss}")
+    print(f"batch: {i}, loss: {loss}")
 
 
-# Visual check
-batch = next(random_exp_gen(env,10)).detach().numpy()
+# # Visual check
+# batch = next(random_exp_gen(env,10)).detach().numpy()
 
-fig, axs = plt.subplots(2, 5)
-for i,ax in enumerate(axs.flat):
-    ax.pcolormesh(batch[i][0], cmap="binary")
-plt.show()
+# fig, axs = plt.subplots(2, 5)
+# for i,ax in enumerate(axs.flat):
+#     ax.pcolormesh(batch[i][0], cmap="binary")
+# plt.show()
