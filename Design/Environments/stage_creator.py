@@ -3,7 +3,6 @@ import os
 sys.path.append(os.getcwd())
 
 import matplotlib
-# matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -13,7 +12,7 @@ import itertools as it
 from scipy.spatial import Delaunay, ConvexHull
 import torch
 
-from gym import Env, spaces, ObservationWrapper, Wrapper
+from gym import GoalEnv, spaces, ObservationWrapper, Wrapper
 from gym.utils import seeding
 
 from Design.Models.AE import model as ae
@@ -88,172 +87,175 @@ def pol2car(r,phi):
 WIDTH = HEIGHT = 1
 RES = 64 # resolution for the screen output
 D_MAX = 0.7
-D_MIN = 0.05
+D_MIN = 0.07
 I_MAX = 5
-EPS = 0.05
+EPS = 0.05 # tolerance for position
+I_EPS = 0 # tolerance for ratios
 RATIOS = get_admisible_ratios(I_MAX)
+MAX_TRAJ_LEN = 8
 
 
-class StageCreator(Env):
-    def __init__(self, env_map=None, boundary=0.3, target=True, seed=None):
-        """ - env_map is a vector [x_start, y_start, x_target, y_target, i_target],
-            - seed may be used to have the pseudo random maps always appear in the same order.
-            - static environments always use the same map
+class StageCreator(GoalEnv):
+    def __init__(self, env_map=None, boundary=0.3, target=True, seed=None, mode="goal"):
+        """ Goal based environment, contained to the design of as single gearbox stage (2D task) i.e.
+            finding a chain of gears that will connect the starting and target points while
+            achieving desired ratio.
+            It supports two modes: "goal" or "selfplay" in the latter no target is created, instead
+            it will be set by the agent itself, also the agant is collision immune.
+            Params:
+            - env_map: a vector [x_start, y_start, x_target, y_target, i_target] of
+                normalized cartesian coordinates [0,1] and desired ratio. If None, a random
+                map will be created
             - boundary is the probability of creating an environemnt with boundary
-            - target: when creating an environemnt, sample a random target, else it will be 
-                established during selfplay
+            - target: when creating an environemnt, sample a random target or not (relevent for selfplay)
+            - seed may be used to have the pseudo random maps always appear in the same order.
         """
+
         self.seed(seed)
         self.boundary=boundary
-        env_map = generate_random_map(self.np_random, WIDTH, HEIGHT, boundary, target) if env_map==None else env_map
-        self.i_target = env_map.get("i_target", 1.0)
-        self.p_start = env_map["p_start"]
-        self.p_target = env_map.get("p_target", self.p_start.copy())
-        self.b_points = env_map.get("boundary_points",None) # boundary points
         self.screen = None
-        self.steps = 0 # for the collision free step()
-
-        # state appended with the (x_current, y_current, i_current, d_current, x_target, y_target, i_target)
-        self.observation_space = spaces.Box(low=np.array([0,0,-100, 0, 0,0,-100]), high=np.array([1,1,100,1,1,1,100]), dtype=float)
-        # action is a tuple (diam, phi)
-        self.action_space = spaces.Box(low=np.array([D_MIN,0]), high=np.array([D_MAX, 1]), dtype=float)
-
         self.fig, self.ax = plt.subplots(1,3, figsize=[15,5])
-        self.reset(random=False)
+        self.reset(random=True, env_map=env_map, target=mode=="goal")
+        self.mode = mode
+
+        self.observation_space = spaces.Dict({ # not quite consistent, ration is not normalized to 0,1
+                        'observation': spaces.Box(low=0, high=1, shape=(4,)), # x, y, i ,diam
+                        'desired_goal': spaces.Box(low=0, high=1, shape=(3,)), # x_target, y_target, i_target
+                        'achieved_goal': spaces.Box(low=0, high=1, shape=(3,))}) # x_current, y_current, i_current
+
+        # action is a tuple (diam, phi)
+        self.action_space = spaces.Box(low=np.array([D_MIN,0]), high=np.array([D_MAX, 1]))
 
 
     def step(self, a:tuple):
-        """ No termination upon collision, instead just no change in state,
-            Termination upon reaching max steps or reaching the target
-            the number of steps is ultimately used to calculate reward 
-            Returns a tuple: next_state, done
+        """ Irespectful of the mode returns a tuple: (obs, done, reward, info)
+            - a is a tuple of (diam, phi) or (diam, phi, agent_idx)m where 
+            agent_idx is necessary to distinguish who is playing in the selfplay
+            mode.
+            In selfplay mode there is no termination upon collision, instead 
+            just no change in state. Also, the rewards are calculated externally 
+            so they don't matter in that case.
         """
-        next_state = self.s.copy()
-        self.steps += 1
         reward = 0
+        next_state = self.state.copy()
+        old_d = next_state[3]
+        done = False
+        self.steps += 1 # just for the recprd
 
-        if len(a)==2: # training/evaluation mode
-            d_old = next_state[3]
-            next_state[3] = a[0]
-            if a[0]<D_MIN or len(self.traj)>8:
-                # return self.s, -1, True, None
-                if self.traj!=[]:
-                    # Update the next state nevertheless
-                    next_state[:2] += pol2car((d_old+a[0])/2, 2*np.pi*a[1]) # new position
-                    next_state[2] *= -d_old/a[0] # new ratio
-                return next_state, reward, True, None
-            if self.traj==[]:
-                # First step doesn't change the state because one gear doesn't make
-                # a gear stage
-                done = self.check_collisions(*next_state[:2], a[0])
-                self.traj.append((*self.p_start, a[0]))
-                # reward = -int(done)
-            else:
-                # print("Pre update: ", self.s)
-                next_state[:2] += pol2car((d_old+a[0])/2, 2*np.pi*a[1]) # new position
-                next_state[2] *= -d_old/a[0] # new ratio
-                done = self.check_collisions(*next_state[:2], a[0])
-                self.traj.append((*next_state[:2], a[0]))
-                # print("Post update: ", self.s)
-                # reward = -int(done)
-            
-            p_dist = np.linalg.norm(next_state[:2]-next_state[-3:-1], 2)
-            if p_dist<(a[0]+D_MIN)/2: # if the gear occludes the output
-                done = True
-                if p_dist<D_MIN/2:
-                    i_ratio = next_state[-1]/next_state[2] # ratio of ratios
-                    if i_ratio < 0:
-                        reward = 0
-                    # elif abs(np.log(i_ratio))<0.4:
-                    #     reward = len(self.traj)>1
-                    else:
-                        reward = 1 # just reach position and corent rotation direction
-
-            self.s = next_state
-            return next_state, reward, done, None
-
-        elif len(a)==3: # Alice Bob playing mode
-            if a[0]<D_MIN:
-                return next_state, None, False, None # invalid action
-            d_old = next_state[3]
-            next_state[3] = a[0]
-            if self.traj!=[]: # If at least one gear already placed
-                next_state[:2] += pol2car((d_old+a[0])/2, 2*np.pi*a[1]) # new position
-                next_state[2] *= -d_old/a[0] # new ratio
-            if self.check_collisions(*next_state[:2], a[0]):
-                return self.s.copy(), None, False, None # return old state
-            self.traj.append((*next_state[:2], a[0]))
-            self.s = next_state
-            
-            if a[-1]==0: # if Bob is playing
-                p_dist = np.linalg.norm(next_state[:2]-next_state[-3:-1], 2)
-                if p_dist<D_MIN:
-                    i_ratio = next_state[-1]/next_state[2] # ratio of ratios
-                    if i_ratio<0: # just position and rotation direction
-                        # print("Almost solved, wrong ratio")
-                        return next_state, None, False, None
-                    else:
-                        return next_state, None, True, None # Succesfully finished
-
-            return next_state, None, False, None
-        
+        # First step doesn't change the position because one gear doesn't make
+        # a gear stage (every step modifies d though)
+        next_state[3] = a[0]
+        if self.traj!=[]:
+            next_state[:2] += pol2car((old_d+a[0])/2, 2*np.pi*a[1]) # new position
+            next_state[2] *= -old_d/a[0] # new ratio
+        if a[0]<D_MIN or len(self.traj)>MAX_TRAJ_LEN or self.check_collisions(*next_state[[0,1,3]]):
+            done = self.mode=="goal" # no termination during selfplay
+            obs = next_state if done else self.state.copy() 
         else:
-            Exception("Unsuported mode")
+            self.traj.append(tuple(next_state[[0,1,3]])) # using tuple it will be appended by value
+            # reward is ignored in selfplay mode, but it may not be calulated by task giver
+            # because its goal is equal to state_init
+            if not (self.mode=="selfplay" and a[-1]==1):
+                reward, done = self.compute_reward(next_state, self.goal, None)
+            self.state = obs = next_state
+
+        return obs, reward, done, None
 
 
-    def render(self, mode="human", delay=0.1, path=None, ae=None):
+    def compute_reward(self, state, target, info):
+        """Compute the sparse binary reward:
+            - = 1: if the target position has been met within EPS and
+                the rotation direction is same
+            - = 0: otherwise
+        """
+        reward = 0
+        done = False
+        p_dist = np.linalg.norm(state[:2]-target[:2], 2)
+        if p_dist<state[3]/2: # if the gear occludes the output
+            done = True
+            if p_dist<EPS: # .. if it does so within the tolerance
+                i_ratio = target[-1]/state[2] # ratio of ratios
+                reward = int(i_ratio>0) # same sign?
+        return reward, done
+
+
+    def reset(self, random=True, env_map=None, target=True):
+        """ Initializes the environment. If env_map==None and random==True a random 
+            map w/ or w/0 a target (relevant for selfplay mode) will be created. If 
+            random==False the environment will be reset to the last initial state.
+        """
+        if env_map!=None:
+            self.state_init = [*env_map[:2], 1.0, 0] # x,y,i,d
+            self.goal = env_map[2:]
+            self.b_points = [] # no support for manual boundary yet
+        elif random:
+            env_map = generate_random_map(self.np_random, WIDTH, HEIGHT, self.boundary, target)
+            self.state_init = [*env_map["p_start"], 1.0, 0] # x,y,i,d
+            # if target==False (e.g in selfplay mode), the target and init will be same
+            self.goal = [*env_map.get("p_target", env_map["p_start"]), env_map.get("i_target", 1.0)]
+            self.b_points = env_map.get("boundary_points", [])
+
+        # reset state to initial (goal and b_points always stay the same)
+        self.state = obs = np.array(self.state_init)
+        self.traj = []
+        self.steps = 0 # for selfplay mode
+        self._init_fig()
+
+        return obs
+
+
+    def render(self, mode="human", delay=0.1):
         """ Displays the state trajectory of the environment up to the
-            current state. Works currently for 2D case only.
-            mode: "human" or "screen"
+            current state. Modes: 
+            - "human" - just plots the fig
+            - "rgb_array" - returns the cavas as a np.array
         """
         if self.traj != []:
             n = 50
             k = np.linspace(0,1,n)
-            x_c,y_c,d = self.traj[-1]
+            x_c, y_c, _, d = self.state
             x,y = pol2car([d/2]*n, 2*np.pi*k)
             self.ax[0].plot(np.array(x)+x_c, np.array(y)+y_c, c="tab:blue")            
 
-        # self.ax[0].set_title(f"It: {len(self.traj)}, Current ratio: {self.s[2]}, Target ratio:{self.i_target}")
-        self.ax[0].set_title(f"Step: {self.steps}, Current ratio: {self.s[2]}")
-        self.fig.legend()
-        plt.pause(delay)
-        # if path is not None:
-        #     plt.savefig(path + f"stage_{self.stage_no}")
-
-
-    def reset(self, random=True, target=True):
-        if random:
-            env_map = generate_random_map(self.np_random, WIDTH, HEIGHT, self.boundary, target)
-            self.i_target = env_map.get("i_target", 1.0)
-            self.p_start = env_map["p_start"]
-            self.p_target = env_map.get("p_target", self.p_start.copy())
-            self.b_points = env_map.get("boundary_points",None)
-        self.s = np.array([*self.p_start, 1.0, 0, *self.p_target, self.i_target])
-        self.traj = []
-        self.steps = 0
-
-        plt.cla()
-        self.ax[0].clear()
-        self.ax[0].set_xlim([0, 1])
-        self.ax[0].set_ylim([0, 1])
-        self.ax[0].scatter(*self.p_target, c="tab:red", label="Target")
-        self.ax[0].scatter(*self.p_start, c="tab:green", label="Input")
-
-        # Close the polygon and plot the boundary
-        if self.b_points is not None:
-            v_x,v_y = list(zip(*self.b_points))
-            self.ax[0].plot(list(v_x) +[v_x[0]], list(v_y) + [v_y[0]], c='k')
-
-        return self.s.copy()
+        if mode=="human":        
+            self.ax[0].set_title(f"Step: {self.steps}"
+                                +f" i = {self.state[-2]}" 
+                                +f" i_target = {self.goal[-1]:.3f}")
+            self.fig.legend()
+            plt.pause(delay)
+        elif mode=="rgb_array":
+            # Save canvas to a numpy array.
+            data = np.fromstring(self.fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+            data = data.reshape(self.fig.canvas.get_width_height()[::-1] + (3,))
+            return data
+        else:
+            Exception("Unsupported mode")
 
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return seed
 
+
+    def _init_fig(self):
+        """ Plots starting and end points as well as boundary """
+        plt.cla()
+        self.ax[0].clear()
+        self.ax[0].set_xlim([0, 1])
+        self.ax[0].set_ylim([0, 1])
+        self.ax[0].scatter(*self.goal[:2], c="tab:red", label="Target")
+        self.ax[0].scatter(*self.state[:2], c="tab:green", label="Input")
+
+        # Close the polygon and plot the boundary
+        if self.b_points != []:
+            v_x,v_y = list(zip(*self.b_points))
+            self.ax[0].plot(list(v_x) +[v_x[0]], list(v_y) + [v_y[0]], c='k')
+        
+        self.fig.canvas.draw() # for rgb_mode rendring
+
+
     def set_target(self, p_target, i_target):
-        self.p_target = p_target
-        self.i_target = i_target
+        self.goal = [*p_target, i_target]
 
 
     def check_collisions(self, x, y, d):
@@ -261,7 +263,7 @@ class StageCreator(Env):
             with any of the previous ones or the map boundaries/obstacles
         """
         # with the map
-        if self.b_points is not None:
+        if self.b_points != []:
             i=-1
             for j in range(len(self.b_points)):
                 p1 = self.b_points[i,:]
@@ -286,12 +288,20 @@ class StageCreator(Env):
 
 
 class ScreenOutput(ObservationWrapper):
-    """ Extends the state of the environment by a pixel output of the entire gear stage
-        created do far.
-        Returns a tuple of single channel, gray-scale NxN pixel picture in a format required 
-        by Pytorch and the oryginal state (x_current, y_current, i_current, x_target, y_target, i_target)
-        If ae is not None, the pixel output will directly be passed through an autoencoder, reshaped to vectors
-        and normalized with sigmoid
+    """ Extends the state of the environment by a pixel rendering of the entire 
+        trajectory created so far (an attempt at handling POMDP). Additionally, 
+        if ae is not None, the pixel output will directly be passed through an 
+        autoencoder, reshaped to a latent vector and normalized with sigmoid.
+        Params:
+        - N - resolution
+        - env - environment it wraps
+        - ae - autoencoder (use eval() mode)
+        yamaha
+        Returns:
+        - a tuple of single channel, gray-scale NxN pixel picture (1xNxN array
+        required by Pytorch) and the oryginal observation
+        - ... or a concatenated vector of features extracted with ae and the oryginal
+        observation
     """
     def __init__(self, N, env=None, ae=None):
         super().__init__(env)
@@ -300,67 +310,62 @@ class ScreenOutput(ObservationWrapper):
         self.h_y = HEIGHT/N
         self.screen = np.zeros((N,N))
         self.ae=ae # output reshaped and normalized features
-        # self.observation_space =  spaces.Box(low=0.0, high=1.0, shape=(1,N,N), dtype=float)
-        if ae is None:
-            self.observation_space = spaces.Tuple((spaces.Box(low=0.0, high=1.0, shape=(1,N,N), dtype=float), self.observation_space))
-        else:
-            out = self.observation_space.shape[0] + ae.get_bottleneck_size(N)[-1]
-            self.observation_space = spaces.Box(0,1, shape=(out,))
         
+        if ae == None:
+            obs_space = spaces.Tuple((spaces.Box(low=0.0, high=1.0, shape=(1,N,N), dtype=float), 
+                                        spaces.Box(low=0, high=1, shape=(4,)) ))
+        else:
+            out = self.observation_space['observation'].shape[0] + ae.get_bottleneck_size(N)[-1]
+            obs_space = spaces.Box(low=0.0, high=1.0, shape=(out,))
+        
+
+        self.observation_space = spaces.Dict({ # not quite consistent, ration is not normalized to 0,1
+                        'observation': obs_space, # x, y, i ,diam
+                        'desired_goal': spaces.Box(low=0, high=1, shape=(3,)), # x_target, y_target, i_target
+                        'achieved_goal': spaces.Box(low=0, high=1, shape=(3,))}) # x_current, y_current, i_current
+
         # self._draw_io()
-        if self.b_points is not None:
+        if self.b_points != []:
             self._draw_boundary()
+
+
+    def reset(self, **kwargs):
+        obs = self.env.reset(**kwargs)
+        self.screen = np.zeros_like(self.screen)
+        # self._draw_io()
+        if self.b_points != []:
+            self._draw_boundary()
+
+        return obs
 
 
     def observation(self, obs):
         if self.traj != []:
             x,y,d = self.traj[-1]
-            N = self.N # resolution
             self._draw_circle(x,y,d)
             # # recolor the input if ocluded
             # if len(self.traj) == 1: 
             #     h,v = np.array([-1,0,0,0,1]),np.array([0,-1,0,1,0])
             #     self.screen[h+y_c,v+x_c] = 0.587 #green
-        else: # trigers at reset
-            self.screen = np.zeros_like(self.screen)
-            # self._draw_io()
-            if self.b_points is not None:
-                self._draw_boundary()
 
-        # if ae == None:
-        return np.array([self.screen.copy()], dtype=float), obs
-        # else:
-        #     features = self.ae(self.screen) # extract features from pixel input
-        #     return torch.column_stack([features, obs])
-
-
-    # def reset(self):
-    #     _, obs = super().reset()
-    #     self.screen = np.zeros_like(self.screen)
-    #     # self._draw_io()
-    #     if self.b_points!=None:
-    #         self._draw_boundary()
-
-    #     return np.array([self.screen], dtype=float), obs
+        if self.ae == None:
+            return np.array([self.screen], dtype=np.float32), obs
+        else:
+            screen_t = torch.FloatTensor([self.screen]).unsqueeze(0)
+            # features from pixel input, reshaped to a vector and normalized
+            features = self.ae(screen_t).squeeze(0).detach().numpy()
+            return np.hstack((features, obs))
 
     
-    def render(self, delay=0.1, ae=None):
-        super().render()
-        self.ax[1].pcolormesh(self.screen, cmap="binary")
-        if ae!=None:
-            inp = np.array([[self.screen]])
-            out = ae.forward(torch.tensor(inp).float()).detach().numpy()
-            self.ax[2].pcolormesh(out[0][0], cmap="binary")
+    def render(self, delay=0.1):
+        self.env.render(delay=0.0001)
+        if len(self.traj)>0:
+            self._draw_circle(*self.traj[-1])
+        self.ax[1].pcolormesh(self.screen, cmap="binary") # screen output
+        if self.ae!=None: # screen passed throughthe autoencoder
+            out = ae.forward(torch.FloatTensor([[self.screen]])).detach().squeeze(0).numpy()
+            self.ax[2].pcolormesh(out[0], cmap="binary")
         plt.pause(delay)
-
-
-    def _draw_io(self):
-        """ Draw small crosses in place of input and output """
-        x_s, y_s = (np.array(self.p_start)*self.N).astype(int)
-        x_t, y_t = (np.array(self.p_target)*self.N).astype(int)
-        h,v = np.array([-1,0,0,0,1]),np.array([0,-1,0,1,0])
-        self.screen[h+y_s,v+x_s] = 0.587 #green
-        self.screen[h+y_t,v+x_t] = 0.299 #red
 
 
     def _draw_boundary(self):
@@ -408,6 +413,15 @@ class ScreenOutput(ObservationWrapper):
                     self.screen[y_idx, x_idx] = 1
     
 
+    # def _draw_io(self):
+    #     """ Draw small crosses in place of input and output """
+    #     x_s, y_s = (np.array(self.p_start)*self.N).astype(int)
+    #     x_t, y_t = (np.array(self.p_target)*self.N).astype(int)
+    #     h,v = np.array([-1,0,0,0,1]),np.array([0,-1,0,1,0])
+    #     self.screen[h+y_s,v+x_s] = 0.587 #green
+    #     self.screen[h+y_t,v+x_t] = 0.299 #red
+
+
 if __name__=="__main__":
     from Design.Models.AE.model import Autoencoder
 
@@ -415,15 +429,15 @@ if __name__=="__main__":
     ae = Autoencoder(1, pretrained="./Design/Models/AE/Autoencoder-FC.dat").to(device).float()
     
     env = StageCreator(boundary=.8)
-    env = ScreenOutput(64, env)
+    env = ScreenOutput(64, env, ae=ae)
 
-    ae = Autoencoder(1, pretrained="./Design/Models/AE/Autoencoder-FC.dat").to(device).float()
+    # ae = Autoencoder(1, pretrained="./Design/Models/AE/Autoencoder-FC.dat").to(device).float()
     # print(ae.get_fe_out_size((1,RES,RES)))
     # ae=None
-    env.render(ae=ae)
+    env.render()
 
-    print(f"Target ratio:{env.s[-1]}")
-    print(f"Current ratio:{env.s[2]}")
+    print(f"Target ratio:{env.state[-1]}")
+    print(f"Current ratio:{env.state[2]}")
 
     # play manually
     flag = True
@@ -431,14 +445,14 @@ if __name__=="__main__":
         d,phi = input("Action (d [D_MIN,DMAX], phi [0,1]) or q to quit:").split()
         new_state, reward, done, _ = env.step((float(d),float(phi)))
         
-        print(f"Target ratio:{env.s[-1]}")
-        print(f"Current ratio:{env.s[2]}")
-        env.render(ae=ae)
+        print(f"Target ratio:{env.state[-1]}")
+        print(f"Current ratio:{env.state[2]}")
+        env.render()
         if done:
             print(f"Reward: {reward}")
             a = input("Start again with new env (y/n)?: \n")
             flag = a=='y'
             env.reset()
-            env.render(ae=ae)
+            env.render()
 
     plt.close(fig='all')
