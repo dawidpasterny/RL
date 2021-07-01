@@ -19,11 +19,11 @@ from Design.Models.AE import model as ae
 import Design.Environments.stage_creator as sc
 
 GAMMA = 0.99
-BATCH_SIZE = 512 # so big because of HER and because one iteration yields entire episode data (also because of HER)
-LEARNING_RATE = 2e-4
-REPLAY_SIZE = 80000
-REPLAY_INITIAL = 8000
-TEST_INTERV = 1000
+BATCH_SIZE = 512  # so big because of HER and because one iteration yields entire episode data (also because of HER)
+LEARNING_RATE = 5e-4
+REPLAY_SIZE = 250000
+REPLAY_INITIAL = 10000
+TEST_INTERV = 2000
 UNROLL = 2
 
 PATH = "./Design/Models/"
@@ -38,8 +38,8 @@ def test(net, env, num_tests=5, device="cpu"):
         screen, state = env.reset()
         print("Init state: ", state)
         while True: # play a full episode
-            state_t = torch.tensor([state]).to(device).float()
-            screen_t = torch.tensor([screen]).to(device)
+            state_t = torch.FloatTensor([state]).to(device)
+            screen_t = torch.FloatTensor([screen]).to(device)
             # the reason not to use agent here is to just follow the policy
             # we don't need exploration (hence no clipping too)
             action = net(screen_t, state_t)[0].data.cpu().numpy()
@@ -157,10 +157,10 @@ if __name__ == "__main__":
                 writer.add_scalar("Test_mean_reward_10", mean_reward, exp_count)
                 writer.add_scalar("Test_mean_steps_10", mean_steps, exp_count)
 
-                # if test_count>300:
-                #    torch.save(fe.state_dict(), PATH + f"DDPG_HER_stage/FE-worst-{job}.dat")
-                #    torch.save(act_net.state_dict(), PATH + f"DDPG_HER_stage/Actor-worst-{job}.dat")
-                #    torch.save(crt_net.state_dict(), PATH + f"DDPG_HER_stage/Critic_worst-{job}.dat")
+                if test_count>300:
+                    #torch.save(fe.state_dict(), PATH + f"DDPG_HER_stage/FE-worst-{job}.dat")
+                    torch.save(act_net.state_dict(), PATH + f"DDPG_HER_stage/Actor-worst-{job}.dat")
+                    torch.save(crt_net.state_dict(), PATH + f"DDPG_HER_stage/Critic_worst-{job}.dat")
 
                 if best_test_reward is None or best_test_reward < mean_reward:
                     if best_test_reward is not None:
