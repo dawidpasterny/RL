@@ -14,7 +14,7 @@ from Design.Models.AE import model as ae
 import Design.Environments.stage_creator as sc
 
 LEARNING_RATE = 1e-3
-BATCH_SIZE = 512
+BATCH_SIZE = 256
 
 env = sc.StageCreator(seed=3672871121734420758, boundary=.5, mode="selfplay")
 env = sc.ScreenOutput(84, env)
@@ -24,7 +24,7 @@ def random_exp_gen(env, batch_size):
     done=False
     env.reset()
     while True:
-        batch = torch.zeros(batch_size,1,env.N,env.N)
+        batch = torch.zeros(batch_size,1,env.N,env.N, device="cuda")
         for i in range(batch_size):
             j=0
             while j<10:
@@ -40,7 +40,7 @@ def random_exp_gen(env, batch_size):
         yield batch
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-auten = ae.Autoencoder84(1,False)
+auten = ae.Autoencoder84(1,False).to(device)
 optimizer = torch.optim.Adam(auten.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
 writer = SummaryWriter(log_dir="./Design/Models/AE/autoencoder-runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
 best_loss = None

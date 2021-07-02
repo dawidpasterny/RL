@@ -76,7 +76,7 @@ class Autoencoder84(nn.Module):
             nn.ReLU(),
             nn.ConvTranspose2d(32, 16, 5, 2),
             nn.ReLU(),
-            nn.ConvTranspose2d(16, 1, 8, 3),
+            nn.ConvTranspose2d(16, 1, 8, 3, padding=1),
             nn.Sigmoid()
         )
 
