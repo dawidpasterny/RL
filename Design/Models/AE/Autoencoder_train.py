@@ -12,25 +12,27 @@ from collections import deque
 
 from Design.Models.AE import model as ae
 import Design.Environments.stage_creator as sc
+import torch.multiprocessing as mp
 
-LEARNING_RATE = 1e-3
-BATCH_SIZE = 256
+LEARNING_RATE = 1e-4
+LOCAL_BATCH_SIZE = 84
+NUM_THREADS = 9
+BATCH_SIZE = LOCAL_BATCH_SIZE*NUM_THREADS
 
-env = sc.StageCreator(seed=3672871121734420758, boundary=.5, mode="selfplay")
-env = sc.ScreenOutput(84, env)
 
 def random_exp_gen(env, batch_size):
     """ Using normal distribution """
     done=False
     env.reset()
     while True:
-        batch = torch.zeros(batch_size,1,env.N,env.N, device="cuda")
+        batch = torch.zeros(batch_size,1,env.N,env.N)
         for i in range(batch_size):
             j=0
             while j<10:
                 d = np.clip(np.random.normal(.35,.25), sc.D_MIN, sc.D_MAX)
                 phi = np.random.rand()
-                (screen,state),_,done,_ = env.step([d,phi]+[1])
+                obs,_,done,_ = env.step([d,phi]+[1])
+                screen = obs["observation"][0]
                 # env.render(delay=.1)
                 j += 1
             batch[i] = torch.FloatTensor([screen]) # add screen
@@ -39,30 +41,63 @@ def random_exp_gen(env, batch_size):
 
         yield batch
 
+
+def kernel(train_queue, device):
+    env = sc.StageCreator(boundary=.5, mode="selfplay")
+    env = sc.ScreenOutput(84, env)
+    exp_gen = random_exp_gen(env, LOCAL_BATCH_SIZE)
+
+    for batch in exp_gen:
+        train_queue.put(batch.to(device))
+
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 auten = ae.Autoencoder84(1,False).to(device)
+print(auten)
 optimizer = torch.optim.Adam(auten.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
 writer = SummaryWriter(log_dir="./Design/Models/AE/autoencoder-runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
 best_loss = None
-exp_gen = random_exp_gen(env,BATCH_SIZE)
 
-for i, batch in enumerate(exp_gen):
-    optimizer.zero_grad()
-    out = auten.forward(batch)
-    loss = nn.MSELoss()(out, batch)
-    loss.backward()
-    optimizer.step()
 
-    if best_loss is None or loss < best_loss:
-        torch.save(auten.state_dict(), "./Design/Models/AE/Autoencoder-best.dat")
-        if best_loss is not None:
-            print(f"Best loss updated {best_loss} -> {loss}, model saved")
-        best_loss = loss
+if __name__ == "__main__":
+    mp.set_start_method('spawn')
+    os.environ['OMP_NUM_THREADS'] = "1"
+    train_queue = mp.Queue(maxsize=NUM_THREADS)
+    proc_list = []
+    for i in range(NUM_THREADS):
+        p = mp.Process(target=kernel, args=(train_queue, device))
+        p.start()
+        proc_list.append(p)
 
-    writer.add_scalar("loss", loss, i)
-    # writer.add_scalar("speed", speed, frame_idx)
+    try:
+        training_batch = deque(maxlen=NUM_THREADS)
+        while True:
+            try:
+                training_batch.append(train_queue.get(block=False))
+            except:
+                # print("No new batch found")
+                pass
 
-    print(f"batch: {i}, loss: {loss}")
+            if len(training_batch)<NUM_THREADS:
+                continue
+
+            batch = torch.cat(tuple(training_batch)).to(device)
+            optimizer.zero_grad()
+            out = auten.forward(batch)
+            loss = nn.BCELoss()(out, batch)
+            loss.backward()
+            optimizer.step()
+
+            if best_loss is None or loss < best_loss:
+                torch.save(auten.state_dict(), "./Design/Models/AE/Autoencoder84_1.dat")
+                if best_loss is not None:
+                    print(f"Best loss updated {best_loss} -> {loss}, model saved")
+                best_loss = loss
+
+            writer.add_scalar("loss", loss, i)
+        # writer.add_scalar("speed", speed, frame_idx)
+
+            print(f"batch: {i}, loss: {loss}")
 
 
 # # Visual check
@@ -72,3 +107,8 @@ for i, batch in enumerate(exp_gen):
 # for i,ax in enumerate(axs.flat):
 #     ax.pcolormesh(batch[i][0], cmap="binary")
 # plt.show()
+
+    finally:
+        for p in proc_list:
+            p.terminate()
+            p.join()

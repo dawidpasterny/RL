@@ -96,10 +96,11 @@ class SelfplayAgent():
             b_actions.append(action)
 
             # Perform step +[0] to indicate that it's bob
-            (screen, state), _, done, _ = self.env.step(action+[0])
+            (screen, state), reward, done, _ = self.env.step(action+[0])
             # self.env.render()
-            # if done:
-            #     print(f"Bob solved an environment with {len(self.env.traj)} gears")
+            if done and reward==0: # bob could have just occluded the output, not solve the env
+                b_steps = MAX_STEPS-a_steps
+                # print(f"Bob solved an environment with {len(self.env.traj)} gears")
 
         # Calculate rewards
         r_b = -b_steps

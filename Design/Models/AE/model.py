@@ -7,6 +7,7 @@ import torch.nn as nn
 class Autoencoder(nn.Module):
     def __init__(self, io_size, pretrained=None, device="cpu"):
         super().__init__()
+        self.device = device
         self.encoder = nn.Sequential( # 1x128x128 -> 32x10x10
             # nn.MaxPool2d(2,2),
             nn.Conv2d(io_size, 8, kernel_size=4, stride=2), # 31
@@ -39,9 +40,11 @@ class Autoencoder(nn.Module):
 
     def __call__(self, x): # feature extractor
         x = self.encoder(x)
-        x = x.view(x.shape[0],-1)
-        # x = self.en_fc(x)
-        return torch.sigmoid(x) # to normalize the features to the same order of magniture as state
+        # sigmoid to normalize the features to the same order of magniture as state
+        # x = torch.sigmoid(x.view(x.shape[0],-1))
+        # x = torch.tanh(x.view(x.shape[0],-1))
+        # print(x)
+        return x
 
     def decode(self,x):
         # x = nn.functional.relu(self.de_fc(x))
@@ -50,7 +53,7 @@ class Autoencoder(nn.Module):
         return x
 
     def get_bottleneck_size(self, shape):
-        o = self.encoder(torch.zeros(1, shape, shape).unsqueeze(dim=1))
+        o = self.encoder(torch.zeros(1, shape, shape).to(self.device).unsqueeze(dim=1))
         o = torch.reshape(o, (1,-1))
         return o.size()
 
@@ -60,23 +63,32 @@ class Autoencoder84(nn.Module):
         super().__init__()
         self.encoder = nn.Sequential(
             nn.ConstantPad2d(1, 1.0),
+            # PrintLayer(),
             nn.Conv2d(io_size, 16, kernel_size=8, stride=3),
             nn.ReLU(),
+            # PrintLayer(),
             nn.Conv2d(16, 32, kernel_size=5, stride=2), 
             nn.ReLU(),
+            # PrintLayer(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(64, 84, kernel_size=5)
+            # PrintLayer(),
+            nn.Conv2d(64, 84, kernel_size=5),
+            # PrintLayer(),
         )
 
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(84, 64, 5),
             nn.ReLU(),
+            # PrintLayer(),
             nn.ConvTranspose2d(64, 32, 4, 2),
             nn.ReLU(),
+            # PrintLayer(),
             nn.ConvTranspose2d(32, 16, 5, 2),
             nn.ReLU(),
+            # PrintLayer(),
             nn.ConvTranspose2d(16, 1, 8, 3, padding=1),
+            # PrintLayer(),
             nn.Sigmoid()
         )
 
@@ -105,6 +117,7 @@ class PrintLayer(nn.Module):
         super(PrintLayer, self).__init__()
     
     def forward(self, x):
+        # Do your print / debug stuff here
         print(x.shape)
         return x
 

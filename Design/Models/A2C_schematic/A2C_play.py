@@ -11,7 +11,7 @@ import torch
 import collections
 
 from Design.Environments import y_schematic_reward as ys
-from Design.Models.A2C.A2C import PolicyAgent, A2CNet
+from Design.Models.A2C_schematic.A2C import PolicyAgent, A2CNet
 
 # python ./Design/Models/A2C/A2C_play.py -m ./Design/Models/A2C/runs/A2C2D-best-A2C2D-best-A2C2DMar25_13_21_08.dat
 if __name__ == "__main__":

@@ -3,59 +3,59 @@ import numpy as np
 import copy
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
+HID_SIZE = 128
 
-class FE(nn.Module):
-    """ Convolutional feature extractor to be shared among various networks """
-    def __init__(self, input_shape, n_features):
+class Autoencoder(nn.Module):
+    def __init__(self, io_size):
         super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(input_shape[0], 32, kernel_size=8, stride=4), # 1 channel data
+        self.encoder = nn.Sequential(
+            nn.Conv2d(io_size, 8, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.Conv2d(8, 8, kernel_size=5, stride=2),
             nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1),
-            nn.ReLU()
+            nn.Conv2d(8, 16, kernel_size=5, stride=3),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=7)
         )
 
-        conv_out_size = self._get_conv_out(input_shape)
-        self.fc = nn.Sequential(
-            nn.Linear(conv_out_size, n_features),
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(32, 16, 7),
+            nn.ReLU(),
+            nn.ConvTranspose2d(16, 8, 5, stride=3),
+            nn.ReLU(),
+            nn.ConvTranspose2d(8, 8, 5, stride=2),
+            nn.ReLU(),
+            nn.ConvTranspose2d(8, 1, 4, stride=2),
             nn.Sigmoid()
         )
 
-    def _get_conv_out(self, shape):
-        o = self.conv(torch.zeros(1, *shape))
-        return int(np.prod(o.size()))
-
-    def forward(self, x):
-        c = self.conv(x).view(x.size()[0],-1)
-        return self.fc(c)
+    def forward(self,x):
+        return self.decoder(self.encoder(x))
 
 
 class DDPGActor(nn.Module):
-    def __init__(self, obs_size, act_size, fe):
+    def __init__(self, obs_size, act_size):
         super(DDPGActor, self).__init__()
-        self.fe=fe
+
         self.net = nn.Sequential(
             nn.Linear(obs_size, 400),
             nn.ReLU(),
             nn.Linear(400, 300),
             nn.ReLU(),
             nn.Linear(300, act_size),
-            nn.Sigmoid()
+            nn.Tanh()
         )
 
-    def forward(self, screen, state):
-        x = self.fe(screen)
-        x = torch.column_stack([x, state])
+    def forward(self, x):
         return self.net(x)
 
 
 class DDPGCritic(nn.Module):
-    def __init__(self, obs_size, act_size, fe):
+    def __init__(self, obs_size, act_size):
         super(DDPGCritic, self).__init__()
-        self.fe=fe
+
         self.obs_net = nn.Sequential(
             nn.Linear(obs_size, 400),
             nn.ReLU(),
@@ -67,29 +67,27 @@ class DDPGCritic(nn.Module):
             nn.Linear(300, 1)
         )
 
-    def forward(self, screen, state, a):
-        x = self.fe(screen)
-        x = torch.column_stack([x, state])
+    def forward(self, x, a):
         obs = self.obs_net(x)
         return self.out_net(torch.cat([obs, a], dim=1))
 
-
 class TargetNet():
-    """ Just a wrapper with syncing functionality for target networks"""
+    """
+    Wrapper around model which provides copy of it instead of trained weights
+    """
     def __init__(self, model):
         self.model = model
         self.target_model = copy.deepcopy(model)
-
-    def __call__(self, *args):
-        self.target_model(args)
 
     def sync(self):
         self.target_model.load_state_dict(self.model.state_dict())
 
     def alpha_sync(self, alpha):
-        """ Soft sync, performs convex combination of target net parameters with
-            model parameters
         """
+        Blend params of target net with params from the model
+        :param alpha:
+        """
+        assert isinstance(alpha, float)
         assert 0.0 < alpha <= 1.0
         state = self.model.state_dict()
         tgt_state = self.target_model.state_dict()

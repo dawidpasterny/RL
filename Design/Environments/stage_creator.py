@@ -9,7 +9,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 from fractions import Fraction
 import itertools as it
-from scipy.spatial import Delaunay, ConvexHull
+# from scipy.spatial import Delaunay, ConvexHull
 import torch
 
 from gym import GoalEnv, spaces, ObservationWrapper, Wrapper
@@ -85,7 +85,6 @@ def pol2car(r,phi):
 
 
 WIDTH = HEIGHT = 1
-RES = 64 # resolution for the screen output
 D_MAX = 0.7
 D_MIN = 0.07
 I_MAX = 5
@@ -119,9 +118,9 @@ class StageCreator(GoalEnv):
         self.mode = mode
 
         self.observation_space = spaces.Dict({ # not quite consistent, ration is not normalized to 0,1
-                        'observation': spaces.Box(low=0, high=1, shape=(4,)), # x, y, i ,diam
-                        'desired_goal': spaces.Box(low=0, high=1, shape=(3,)), # x_target, y_target, i_target
-                        'achieved_goal': spaces.Box(low=0, high=1, shape=(3,))}) # x_current, y_current, i_current
+                'observation': spaces.Box(low=np.array([0,0,-I_MAX,0]), high=np.array([1,1,I_MAX,1])), # x, y, i ,diam
+                'desired_goal': spaces.Box(low=np.array([0,0,-I_MAX]), high=np.array([1,1,I_MAX])), # x_target, y_target, i_target
+                'achieved_goal': spaces.Box(low=np.array([0,0,-I_MAX]), high=np.array([1,1,I_MAX]))}) # x_current, y_current, i_current
 
         # action is a tuple (diam, phi)
         self.action_space = spaces.Box(low=np.array([D_MIN,0]), high=np.array([D_MAX, 1]))
@@ -152,14 +151,14 @@ class StageCreator(GoalEnv):
             done = self.mode=="goal" # no termination during selfplay
             obs = next_state if done else self.state.copy() 
         else:
+            self.state = obs = next_state
             self.traj.append(tuple(next_state[[0,1,3]])) # using tuple it will be appended by value
             # reward is ignored in selfplay mode, but it may not be calulated by task giver
             # because its goal is equal to state_init
             if not (self.mode=="selfplay" and a[-1]==1):
-                reward, done = self.compute_reward(next_state, self.goal, None)
-            self.state = obs = next_state
+                reward, done = self.compute_reward(next_state[:3], self.goal, None)
 
-        return obs, reward, done, None
+        return obs, reward, done, {}
 
 
     def compute_reward(self, state, target, info):
@@ -168,13 +167,14 @@ class StageCreator(GoalEnv):
                 the rotation direction is same
             - = 0: otherwise
         """
+        # print(state, target)
         reward = 0
         done = False
         p_dist = np.linalg.norm(state[:2]-target[:2], 2)
-        if p_dist<state[3]/2: # if the gear occludes the output
+        if p_dist<(self.state[3]/2): # if the gear occludes the output
             done = True
             if p_dist<EPS: # .. if it does so within the tolerance
-                i_ratio = target[-1]/state[2] # ratio of ratios
+                i_ratio = target[2]/state[2] # ratio of ratios
                 reward = int(i_ratio>0) # same sign?
         return reward, done
 
@@ -187,13 +187,13 @@ class StageCreator(GoalEnv):
         if env_map!=None:
             self.state_init = [*env_map[:2], 1.0, 0] # x,y,i,d
             self.goal = env_map[2:]
-            self.b_points = [] # no support for manual boundary yet
+            self.b_points = None # no support for manual boundary yet
         elif random:
             env_map = generate_random_map(self.np_random, WIDTH, HEIGHT, self.boundary, target)
             self.state_init = [*env_map["p_start"], 1.0, 0] # x,y,i,d
             # if target==False (e.g in selfplay mode), the target and init will be same
             self.goal = [*env_map.get("p_target", env_map["p_start"]), env_map.get("i_target", 1.0)]
-            self.b_points = env_map.get("boundary_points", [])
+            self.b_points = env_map.get("boundary_points", None)
 
         # reset state to initial (goal and b_points always stay the same)
         self.state = obs = np.array(self.state_init)
@@ -247,9 +247,11 @@ class StageCreator(GoalEnv):
         self.ax[0].scatter(*self.state[:2], c="tab:green", label="Input")
 
         # Close the polygon and plot the boundary
-        if self.b_points != []:
+        try:
             v_x,v_y = list(zip(*self.b_points))
             self.ax[0].plot(list(v_x) +[v_x[0]], list(v_y) + [v_y[0]], c='k')
+        except:
+            pass
         
         self.fig.canvas.draw() # for rgb_mode rendring
 
@@ -263,7 +265,7 @@ class StageCreator(GoalEnv):
             with any of the previous ones or the map boundaries/obstacles
         """
         # with the map
-        if self.b_points != []:
+        try:
             i=-1
             for j in range(len(self.b_points)):
                 p1 = self.b_points[i,:]
@@ -275,7 +277,7 @@ class StageCreator(GoalEnv):
                 if dist<(d/2):
                     return True
                 i=j
-        else: 
+        except: # no boundary case
             if x+d/2> WIDTH or y+d/2> HEIGHT or x-d/2 <0 or y-d/2<0:
                 return True
 
@@ -289,14 +291,13 @@ class StageCreator(GoalEnv):
 
 class ScreenOutput(ObservationWrapper):
     """ Extends the state of the environment by a pixel rendering of the entire 
-        trajectory created so far (an attempt at handling POMDP). Additionally, 
+        trajectory created so far (an attempt to handle POMDP). Additionally, 
         if ae is not None, the pixel output will directly be passed through an 
         autoencoder, reshaped to a latent vector and normalized with sigmoid.
         Params:
         - N - resolution
         - env - environment it wraps
-        - ae - autoencoder (use eval() mode)
-        yamaha
+        - ae - autoencoder (use in eval() mode)
         Returns:
         - a tuple of single channel, gray-scale NxN pixel picture (1xNxN array
         required by Pytorch) and the oryginal observation
@@ -304,7 +305,7 @@ class ScreenOutput(ObservationWrapper):
         observation
     """
     def __init__(self, N, env=None, ae=None):
-        super().__init__(env)
+        super(ScreenOutput, self).__init__(env)
         self.N = N # resolution
         self.h_x = WIDTH/N
         self.h_y = HEIGHT/N
@@ -313,48 +314,47 @@ class ScreenOutput(ObservationWrapper):
         
         if ae == None:
             obs_space = spaces.Tuple((spaces.Box(low=0.0, high=1.0, shape=(1,N,N), dtype=float), 
-                                        spaces.Box(low=0, high=1, shape=(4,)) ))
+                                    spaces.Box(low=np.array([0,0,-I_MAX,0]), high=np.array([1,1,I_MAX,1])) ))
         else:
             out = self.observation_space['observation'].shape[0] + ae.get_bottleneck_size(N)[-1]
             obs_space = spaces.Box(low=0.0, high=1.0, shape=(out,))
         
+        self.observation_space = spaces.Dict({
+                    'observation': obs_space, 
+                    'desired_goal': spaces.Box(low=np.array([0,0,-I_MAX]), high=np.array([1,1,I_MAX])),
+                    'achieved_goal': spaces.Box(low=np.array([0,0,-I_MAX]), high=np.array([1,1,I_MAX]))})
 
-        self.observation_space = spaces.Dict({ # not quite consistent, ration is not normalized to 0,1
-                        'observation': obs_space, # x, y, i ,diam
-                        'desired_goal': spaces.Box(low=0, high=1, shape=(3,)), # x_target, y_target, i_target
-                        'achieved_goal': spaces.Box(low=0, high=1, shape=(3,))}) # x_current, y_current, i_current
-
-        # self._draw_io()
-        if self.b_points != []:
-            self._draw_boundary()
+        # self._reset()
 
 
-    def reset(self, **kwargs):
-        obs = self.env.reset(**kwargs)
+    def _reset(self):
+        # An "internal" reset. 
+        # ObserwatrionWrapper may not override reset()
         self.screen = np.zeros_like(self.screen)
-        # self._draw_io()
-        if self.b_points != []:
-            self._draw_boundary()
-
-        return obs
-
+        self._draw_boundary()
+        
 
     def observation(self, obs):
         if self.traj != []:
             x,y,d = self.traj[-1]
             self._draw_circle(x,y,d)
-            # # recolor the input if ocluded
-            # if len(self.traj) == 1: 
-            #     h,v = np.array([-1,0,0,0,1]),np.array([0,-1,0,1,0])
-            #     self.screen[h+y_c,v+x_c] = 0.587 #green
+        else:
+            self._reset()
 
         if self.ae == None:
-            return np.array([self.screen], dtype=np.float32), obs
+            return {'achieved_goal':self.state[[0,1,3]], 
+                    'desired_goal':self.goal, 
+                    'observation': (np.array([self.screen], dtype=np.float32), obs)}
+            # return np.array([self.screen], dtype=np.float32), obs
         else:
             screen_t = torch.FloatTensor([self.screen]).unsqueeze(0)
             # features from pixel input, reshaped to a vector and normalized
             features = self.ae(screen_t).squeeze(0).detach().numpy()
-            return np.hstack((features, obs))
+            obs = np.hstack((features, obs))
+            return {'achieved_goal':self.state[[0,1,3]], 
+                    'desired_goal':self.goal, 
+                    'observation':obs}
+            # return obs
 
     
     def render(self, delay=0.1):
@@ -372,27 +372,30 @@ class ScreenOutput(ObservationWrapper):
         """ Uses ray casting a.k.a even-odd rule to determine
             wheter a point lies within the boundary points or not
         """
-        if len(self.b_points)==4:
-            # b_points contain [[x1,y1],[x2,y1],[x2,y2], [x1,y2]]
-            self.screen.fill(1)
-            [i1,j1], [i2,j2] = [[int(x//self.h_x), int(y//self.h_y)] for [x,y] in self.b_points[[0,2]]]
-            # print(i1,i2,j1,j2)
-            self.screen[j1:j2+1, i1:i2+1] = 0
-        else:    
-            for j in range(self.N):
-                for i in range(self.N):
-                    x = (i+0.5)*self.h_x
-                    y = (j+0.5)*self.h_y
-                    c = 1
-                    k=-1
-                    for l in range(len(self.b_points)):
-                        p1 = self.b_points[k,:]
-                        p2 = self.b_points[l,:]
-                        crs = ((p1[1]>y) != (p2[1]>y)) and \
-                            (x<p1[0] + (p2[0]-p1[0])*(y-p1[1])/(p2[1]-p1[1]))
-                        c = (c+int(crs))%2
-                        k=l
-                    self.screen[j,i] = c
+        try:
+            if len(self.b_points)==4:
+                # b_points contain [[x1,y1],[x2,y1],[x2,y2], [x1,y2]]
+                self.screen.fill(1)
+                [i1,j1], [i2,j2] = [[int(x//self.h_x), int(y//self.h_y)] for [x,y] in self.b_points[[0,2]]]
+                # print(i1,i2,j1,j2)
+                self.screen[j1:j2+1, i1:i2+1] = 0
+            else:    
+                for j in range(self.N):
+                    for i in range(self.N):
+                        x = (i+0.5)*self.h_x
+                        y = (j+0.5)*self.h_y
+                        c = 1
+                        k=-1
+                        for l in range(len(self.b_points)):
+                            p1 = self.b_points[k,:]
+                            p2 = self.b_points[l,:]
+                            crs = ((p1[1]>y) != (p2[1]>y)) and \
+                                (x<p1[0] + (p2[0]-p1[0])*(y-p1[1])/(p2[1]-p1[1]))
+                            c = (c+int(crs))%2
+                            k=l
+                        self.screen[j,i] = c
+        except:
+            pass
 
 
     def _draw_circle(self,x,y,d):
@@ -423,27 +426,33 @@ class ScreenOutput(ObservationWrapper):
 
 
 if __name__=="__main__":
-    from Design.Models.AE.model import Autoencoder
+    from Design.Models.AE.model import Autoencoder84
+    RES = 84 # resolution for the screen output
 
     device = torch.device("cpu")
-    ae = Autoencoder(1, pretrained="./Design/Models/AE/Autoencoder-FC.dat").to(device).float()
+    ae = Autoencoder84(1, pretrained="./Design/Models/AE/Autoencoder84.dat").to(device).float()
     
     env = StageCreator(boundary=.8)
-    env = ScreenOutput(64, env, ae=ae)
-
-    # ae = Autoencoder(1, pretrained="./Design/Models/AE/Autoencoder-FC.dat").to(device).float()
-    # print(ae.get_fe_out_size((1,RES,RES)))
-    # ae=None
-    env.render()
+    # print(f"Obs spaces: {env.observation_space.spaces}")
+    print(isinstance(env, GoalEnv))
+    print(env)
+    env = ScreenOutput(RES, env, ae=ae)
+    print(f"Obs spaces: {env.observation_space.spaces}")
+    print(isinstance(env, GoalEnv))
+    print(env)
 
     print(f"Target ratio:{env.state[-1]}")
     print(f"Current ratio:{env.state[2]}")
 
+    obs = env.reset()
+    print(obs)
+    print(f"ObservationSpace contains obs: {env.observation_space.contains(obs)}")
+    env.render()
     # play manually
     flag = True
     while flag:
         d,phi = input("Action (d [D_MIN,DMAX], phi [0,1]) or q to quit:").split()
-        new_state, reward, done, _ = env.step((float(d),float(phi)))
+        obs, reward, done, _ = env.step((float(d),float(phi)))
         
         print(f"Target ratio:{env.state[-1]}")
         print(f"Current ratio:{env.state[2]}")

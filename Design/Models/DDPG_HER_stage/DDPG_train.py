@@ -19,11 +19,11 @@ from Design.Models.AE import model as ae
 import Design.Environments.stage_creator as sc
 
 GAMMA = 0.99
-BATCH_SIZE = 512  # so big because of HER and because one iteration yields entire episode data (also because of HER)
-LEARNING_RATE = 5e-4
-REPLAY_SIZE = 250000
-REPLAY_INITIAL = 10000
-TEST_INTERV = 2000
+BATCH_SIZE = 64 # so big because of HER and because one iteration yields entire episode data (also because of HER)
+LEARNING_RATE = 2e-4
+REPLAY_SIZE = 80000
+REPLAY_INITIAL = 100
+TEST_INTERV = 1000
 UNROLL = 2
 
 PATH = "./Design/Models/"
@@ -71,7 +71,7 @@ if __name__ == "__main__":
 
   
     writer = SummaryWriter(log_dir=PATH+"DDPG_HER_stage/runs/"+datetime.datetime.now().strftime("%b%d_%H_%M_%S"))
-    print(f"Executing job: {job} on {device}")
+    # print(f"Executing job: {job} on {device}")
 
     # Envs
     env = sc.StageCreator(seed=seed, boundary=0.5)
@@ -89,7 +89,7 @@ if __name__ == "__main__":
 
     tgt_act_net = model.TargetNet(act_net) 
     tgt_crt_net = model.TargetNet(crt_net)
-    print(f"Starting job #{job}")
+    # print(f"Starting job #{job}")
     # print(fe)
     #print(act_net)
     #print(crt_net)
@@ -152,19 +152,19 @@ if __name__ == "__main__":
             if t > test_count:
                 test_count = t
                 mean_reward, mean_steps = test(act_net, test_env, device=device)
-                print(f"\nJOB {job}, it {exp_count}: mean reward {mean_reward:.3f}, mean steps {mean_steps:.2f}")
+                # print(f"\nJOB {job}, it {exp_count}: mean reward {mean_reward:.3f}, mean steps {mean_steps:.2f}")
 
                 writer.add_scalar("Test_mean_reward_10", mean_reward, exp_count)
                 writer.add_scalar("Test_mean_steps_10", mean_steps, exp_count)
 
-                if test_count>300:
-                    #torch.save(fe.state_dict(), PATH + f"DDPG_HER_stage/FE-worst-{job}.dat")
-                    torch.save(act_net.state_dict(), PATH + f"DDPG_HER_stage/Actor-worst-{job}.dat")
-                    torch.save(crt_net.state_dict(), PATH + f"DDPG_HER_stage/Critic_worst-{job}.dat")
+                # if test_count>300:
+                #    torch.save(fe.state_dict(), PATH + f"DDPG_HER_stage/FE-worst-{job}.dat")
+                #    torch.save(act_net.state_dict(), PATH + f"DDPG_HER_stage/Actor-worst-{job}.dat")
+                #    torch.save(crt_net.state_dict(), PATH + f"DDPG_HER_stage/Critic_worst-{job}.dat")
 
                 if best_test_reward is None or best_test_reward < mean_reward:
                     if best_test_reward is not None:
-                        print(f"JOB {job}: best reward updated -> {mean_reward:.3f}")
+                        # print(f"JOB {job}: best reward updated -> {mean_reward:.3f}")
                         # torch.save(fe.state_dict(), PATH + f"DDPG_HER_stage/FE-best-{job}.dat")
                         torch.save(act_net.state_dict(), PATH + f"DDPG_HER_stage/Actor-best-{job}.dat")
                         torch.save(crt_net.state_dict(), PATH + f"DDPG_HER_stage/Critic_best-{job}.dat")
